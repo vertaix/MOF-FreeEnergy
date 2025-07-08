@@ -1,10 +1,10 @@
 # Highly Accurate and Fast Prediction of MOF Free Energy Via Machine Learning
 
 <p align="center" width="100%">
-    <img src="figures/MOFseq_full.png" alt="image" width="50%" height="auto">
-    <img src="figures/mofseq_embeddings.png" alt="image" width="50%" height="auto">
+    <img src="figures/MOFseq_full.png" alt="image" width="40%" height="auto" style="display: inline-block;">
+    <img src="figures/mofseq_embeddings.png" alt="image" width="40%" height="auto" style="display: inline-block;">
     <br>
-    <em> Schematic representation of MOFse </em>
+    <em> Schematic representation of MOFseq </em>
 </p>
 
 ### Preparing the data
