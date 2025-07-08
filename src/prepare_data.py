@@ -1,5 +1,5 @@
 import pandas as pd
-from llmprop_utils import *
+from src.llmprop_utils import *
 
 def prepare_data(input_file, output_file, tokenizer, mof_representation='mofseq', max_length=2000):
     """
@@ -14,3 +14,4 @@ def prepare_data(input_file, output_file, tokenizer, mof_representation='mofseq'
                                 mof_representation=mof_representation, 
                                 max_length=max_length)
     saveCSV(data_new, output_file)
+    return data_new
