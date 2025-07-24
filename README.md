@@ -8,7 +8,7 @@
 </p>
 
 ### Preparing the data
-Refer to this [notebook](data_preparation.ipynb).
+Refer to this [notebook](data_preparation.ipynb) and change the `paths` and the `max_len` value accordingly.
 
 ### Training
 Run 
