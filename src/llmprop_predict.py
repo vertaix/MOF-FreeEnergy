@@ -44,8 +44,6 @@ import wandb
 from wandb import AlertLevel
 from datetime import timedelta
 
-# import bitsandbytes as bnb
-# from bitsandbytes.optim import Adam8bit
 import subprocess
 
 def predict(
@@ -194,18 +192,9 @@ if __name__ == "__main__":
         shuffled_df = concatenated_df.sample(frac=1, random_state=42).reset_index(drop=True)
         return shuffled_df
 
-    train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/train.csv")
-    # additional_train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_n - 1}_{additional_samples_type}.csv")
-    # train_data = concatenate_and_shuffle(train_data, additional_train_data)
-    
-    # candidates_data_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/iterative_training/candidates_mofs_iteration_{iteration_n-1}.csv" #keep it fixed for now
-    # candidates_data_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_n}_{additional_samples_type}.csv"
-    candidates_data_path ="/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/iterative_training/candidates_mofs_iteration_0.csv"
-    
-    # # Only load the columns we need
-    # required_columns = [property_name, 'mof_name']
-    # train_data = pd.read_csv(train_data_path, usecols=required_columns)
-    candidates_data = pd.read_csv(candidates_data_path) #, usecols=[col for col in required_columns if col != property_name] + ['mof_name']
+    train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/{property_name.lower()}/train.csv")
+    candidates_data_path ="/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/fe_atom/iterative_training/candidates_mofs_iteration_0.csv"
+    candidates_data = pd.read_csv(candidates_data_path)
     
     # Drop duplicates and NaN values
     if input_type in ["mof_name", "mofkey", "mofid_v1"]:
@@ -265,11 +254,9 @@ if __name__ == "__main__":
         train_data = combine_mof_string_representations(train_data, tokenizer, input_type, max_length=max_length)
         candidates_data = combine_mof_string_representations(candidates_data, tokenizer, input_type, max_length=max_length)
     elif input_type == "mofname_and_mofid":
-        # train_data = combined_mofname_and_mofid(train_data, tokenizer, input_type, max_length=max_length)
         candidates_data = combined_mofname_and_mofid(candidates_data, tokenizer, input_type, max_length=max_length)
     
     # Remove duplicates
-    # train_data = train_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     candidates_data = candidates_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     
     # Process labels
@@ -360,8 +347,7 @@ if __name__ == "__main__":
         base_model.resize_token_embeddings(len(tokenizer))
         
         # Load checkpoint
-        # best_model_path = f'/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_n - 1}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt'
-        best_model_path = f'/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_0_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt'
+        best_model_path = f'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_0_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt'
          
         # Initialize model
         best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
@@ -432,25 +418,23 @@ if __name__ == "__main__":
         predictions_data[f'predicted_FE_atom'] = predictions_list
         
         # Save to CSV
-        # output_csv_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/iterative_training/candidates_predictions_iteration_{iteration_n}_{additional_samples_type}_{max_length}.csv"
-        # output_csv_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/iterative_training/additional_train_data_for_iteration_{iteration_n}_{additional_samples_type}_most_accurate.csv"
-        output_csv_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/iterative_training/candidates_mofs_iteration_0_2000.csv"
+        output_csv_path = f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/fe_atom/iterative_training/candidates_mofs_iteration_0_2000.csv"
         
         predictions_data.to_csv(output_csv_path, index=False)
         
-        # # Save embeddings
-        # output_npy_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/iterative_training/candidates_embeddings_iteration_{iteration_n}_{additional_samples_type}_{max_length}.npy"
+        # Save embeddings
+        output_npy_path = f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/fe_atom/iterative_training/candidates_embeddings_iteration_{iteration_n}_{additional_samples_type}_{max_length}.npy"
         
-        # # Convert to numpy array and save
-        # embeddings_array = np.array(embeddings_list, dtype=np.float32)
-        # np.save(output_npy_path, embeddings_array, allow_pickle=False)
+        # Convert to numpy array and save
+        embeddings_array = np.array(embeddings_list, dtype=np.float32)
+        np.save(output_npy_path, embeddings_array, allow_pickle=False)
         
         save_end_time = time.time()
         print(f"Saving results took {time_format(save_end_time - save_start_time)}")
         
         print(f"Results saved to:")
         print(f"  - {output_csv_path}")
-        # print(f"  - {output_npy_path}")
+        print(f"  - {output_npy_path}")
     
     # End overall timing
     end_time = time.time()

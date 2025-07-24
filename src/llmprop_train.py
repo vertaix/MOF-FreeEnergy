@@ -44,8 +44,6 @@ from sklearn.model_selection import train_test_split
 
 from datetime import timedelta
 
-# import bitsandbytes as bnb
-# from bitsandbytes.optim import Adam8bit
 import subprocess
 
 # set the random seed for reproducibility
@@ -70,7 +68,7 @@ def train(
     training_stats = []
     validation_predictions = {}
     
-    best_loss = 1e10 # Set the best loss variable which record the best loss for each epoch
+    best_loss = 1e10
     best_roc = 0.0
 
     for epoch in range(epochs):
@@ -85,9 +83,6 @@ def train(
         model.train()
 
         for step, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
-            
-            # print(f"Step {step+1}/{len(train_dataloader)}")
-
             if preprocessing_strategy == 'xVal':
                 batch_inputs, batch_masks, batch_labels, batch_norm_labels, batch_x_num = tuple(b.to(device) for b in batch)
                 _, predictions = model(batch_inputs, batch_masks, x_num=batch_x_num)
@@ -152,7 +147,6 @@ def train(
         targets_list = []
 
         for step, batch in tqdm(enumerate(valid_dataloader), total=len(valid_dataloader)):
-            # batch_inputs, batch_masks, batch_labels = tuple(b.to(device) for b in batch)
             with torch.no_grad():
                 if preprocessing_strategy == 'xVal':
                     batch_inputs, batch_masks, batch_labels, batch_x_num = tuple(b.to(device) for b in batch)
@@ -197,14 +191,11 @@ def train(
 
                 # save the best model checkpoint
                 save_to_path = checkpoints_directory + f"/mofbench_{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}.pt"
-                # save_to_path = checkpoints_directory + f"{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{tokenizer_name}.pt"
                 
                 if isinstance(model, nn.DataParallel):
                     torch.save(model.module.state_dict(), save_to_path)
-                    # compressCheckpointsWithTar(save_to_path)
                 else:
                     torch.save(model.state_dict(), save_to_path)
-                    # compressCheckpointsWithTar(save_to_path)
                 
                 # save statistics of the best model
                 training_stats.append(
@@ -225,9 +216,6 @@ def train(
 
                 saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/mofbench_{model_name}_training_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
                 saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/mofbench_{model_name}_validation_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
-                # saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/{model_name}_training_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{tokenizer_name}.csv")
-                # saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/{model_name}_validation_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{tokenizer_name}.csv")
-
             else:
                 best_roc = best_roc
 
@@ -244,14 +232,11 @@ def train(
 
                 # save the best model checkpoint
                 save_to_path = checkpoints_directory + f"/mofbench_{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.pt"
-                # save_to_path = checkpoints_directory + f"{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{tokenizer_name}.pt"
-
+                
                 if isinstance(model, nn.DataParallel):
                     torch.save(model.module.state_dict(), save_to_path)
-                    # compressCheckpointsWithTar(save_to_path)
                 else:
                     torch.save(model.state_dict(), save_to_path)
-                    # compressCheckpointsWithTar(save_to_path)
                 
                 # save statistics of the best model
                 training_stats.append(
@@ -272,19 +257,12 @@ def train(
 
                 saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/mofbench_{model_name}_training_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
                 saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/mofbench_{model_name}_validation_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
-                # saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/{model_name}_training_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{tokenizer_name}.csv")
-                # saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/{model_name}_validation_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{tokenizer_name}.csv") 
-
+                
             else:
                 best_loss = best_loss
             
             print(f"Validation mae error = {valid_performance}")
         print(f"validation took {validation_time}")
-
-        wandb.log({
-            'train_loss':average_training_loss, 
-            'val_loss': valid_performance
-        })
 
     train_ending_time = time.time()
     total_training_time = train_ending_time-training_starting_time
@@ -320,8 +298,6 @@ def evaluate(
     targets_list = []
 
     for step, batch in enumerate(test_dataloader):
-        # batch_inputs, batch_masks, batch_labels = tuple(b.to(device) for b in batch)
-
         with torch.no_grad():
             if preprocessing_strategy == 'xVal':
                 batch_inputs, batch_masks, batch_labels, batch_x_num = tuple(b.to(device) for b in batch)
@@ -353,10 +329,6 @@ def evaluate(
             predictions_list.append(predictions[i][0])
             targets_list.append(targets[i])
         
-    # test_predictions = {f"{property_name}": predictions_list}
-
-    # saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/old_{model_name}_test_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}.csv")
-        
     if task_name == "classification":
         test_performance = get_roc_score(predictions_list, targets_list)
         print(f"\n Test ROC score on predicting {property_name} = {test_performance}")
@@ -365,21 +337,11 @@ def evaluate(
         predictions_tensor = torch.tensor(predictions_list)
         targets_tensor = torch.tensor(targets_list)
         test_performance = mae_loss_function(predictions_tensor.squeeze(), targets_tensor.squeeze())
-        # rmse = metrics.mean_squared_error(targets_list, predictions_list, squared=False)
         r2 = metrics.r2_score(targets_list, predictions_list)
-
-        # # correlations between targets_list and predictions_list
-        # pearson_r, pearson_p_value = pearsonr(targets_list, predictions_list)
-        # spearman_r, spearman_p_value = spearmanr(targets_list, predictions_list)
-        # kendall_r, kendall_p_value = kendalltau(targets_list, predictions_list)
 
         print(f"\n The test performance on predicting {property_name}:")
         print(f"MAE error = {test_performance}")
-        # print(f"RMSE error = {rmse}")
         print(f"R2 score = {r2}")
-        # print(f"Pearson_r = {pearson_r}", f"Pearson_p_value = {pearson_p_value}")
-        # print(f"Spearman_r = {spearman_r}", f"Spearman_p_value = {spearman_p_value}")
-        # print(f"Kendall_r = {kendall_r}", f"Kendall_p_value = {kendall_p_value}")
 
     average_test_loss = total_test_loss / len(test_dataloader)
     test_ending_time = time.time()
@@ -417,10 +379,7 @@ if __name__ == "__main__":
 
     # parse Arguments
     args = args_parser()
-    # config = vars(args)
-
-    wandb.init(project='mofbench',
-                config=args)
+    config = vars(args)
 
     # check if the GPU is available
     if torch.cuda.is_available():
@@ -435,32 +394,29 @@ if __name__ == "__main__":
         device = torch.device("cpu")
 
     # set parameters
-    train_batch_size = wandb.config.get('train_bs')
-    inference_batch_size = wandb.config.get('inference_bs')
-    max_length = wandb.config.get('max_len')
-    learning_rate = wandb.config.get('lr')
-    drop_rate = wandb.config.get('dr')
-    epochs = wandb.config.get('epochs')
-    warmup_steps = wandb.config.get('warmup_steps')
-    preprocessing_strategy = wandb.config.get('preprocessing_strategy')
-    tokenizer_name = wandb.config.get('tokenizer')
-    pooling = wandb.config.get('pooling')
-    scheduler_type = wandb.config.get('scheduler')
-    normalizer_type = wandb.config.get('normalizer')
-    property_name = wandb.config.get('property_name')
-    optimizer_type = wandb.config.get('optimizer')
-    task_name = wandb.config.get('task_name')
-    # train_data_path = wandb.config.get('train_data_path')
-    # valid_data_path = wandb.config.get('valid_data_path')
-    # test_data_path = wandb.config.get('test_data_path')
-    data_path = wandb.config.get('data_path')
-    input_type = wandb.config.get('input_type')
-    dataset_name = wandb.config.get('dataset_name')
-    model_name = wandb.config.get('model_name')
-    training_size = wandb.config.get('training_size')
+    train_batch_size = config.get('train_bs')
+    inference_batch_size = config.get('inference_bs')
+    max_length = config.get('max_len')
+    learning_rate = config.get('lr')
+    drop_rate = config.get('dr')
+    epochs = config.get('epochs')
+    warmup_steps = config.get('warmup_steps')
+    preprocessing_strategy = config.get('preprocessing_strategy')
+    tokenizer_name = config.get('tokenizer')
+    pooling = config.get('pooling')
+    scheduler_type = config.get('scheduler')
+    normalizer_type = config.get('normalizer')
+    property_name = config.get('property_name')
+    optimizer_type = config.get('optimizer')
+    task_name = config.get('task_name')
+    data_path = config.get('data_path')
+    input_type = config.get('input_type')
+    dataset_name = config.get('dataset_name')
+    model_name = config.get('model_name')
+    training_size = config.get('training_size')
     finetuned_property_name = "SE_atom"
-    iteration_no = wandb.config.get('iteration_no')
-    additional_samples_type = wandb.config.get('additional_samples_type')
+    iteration_no = config.get('iteration_no')
+    additional_samples_type = config.get('additional_samples_type')
 
     if model_name in ["matbert", "matbert_finetune"]:
         pooling = None
@@ -469,126 +425,15 @@ if __name__ == "__main__":
 
     # checkpoints directory
     checkpoints_directory = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/{dataset_name}/"
-    # checkpoints_directory = f"/n/fs/rnspace/projects/vertaix/cbe_512_project/checkpoints/"
     if not os.path.exists(checkpoints_directory):
         os.makedirs(checkpoints_directory)
 
     # training statistics directory
     statistics_directory = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/statistics/{dataset_name}/"
-    # statistics_directory = "/n/fs/rnspace/projects/vertaix/cbe_512_project/statistics/"
     if not os.path.exists(statistics_directory):
         os.makedirs(statistics_directory)
 
-    # # Define file paths
-    # data_path = "/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data"
-    # # cif_file_csv = f"{data_path}/1M_MOFs_cif_strings_cleaned.csv"
-    # cif_file_csv = f"{data_path}/1M_MOFs_cif_strings_truncated_{model_name}.csv"
-    # # cif_file_csv = f"{data_path}/3K_MOF_subset_cif_strings_cleaned.csv" 
-    # cif_file_parquet = f"{data_path}/1M_MOFs_cif_strings_cleaned.parquet"
-    # train_labels_file = f"{data_path}/tbc4_MOFs_train_labels.csv"
-    # valid_labels_file = f"{data_path}/tbc4_MOFs_valid_labels.csv"
-    # test_labels_file = f"{data_path}/tbc4_MOFs_test_labels.csv"
-
-    # # Load CIF data using Dask for efficient handling
-    # print('Loading the CIF data...')
-    # start = time.time()
-    # # cif_string_data = dd.read_csv(cif_file_csv, dtype={'mof_name': 'str', 'cif_string': 'str'})  # Lazy loading
-    # # cif_string_data = dd.read_csv(cif_file_csv, 
-    # #                               dtype={'cif_name': 'str', 'cif_string': 'str'}, 
-    # #                               sample=1_000_000, sep=",", quotechar='"', 
-    # #                               on_bad_lines="skip").rename(columns={'cif_name':'mof_name'})
-    # # cif_string_data = dd.read_csv(cif_file_csv, 
-    # #                               dtype={'cif_name': 'str', 'cif_string': 'str'}, 
-    # #                               sep=",", quotechar='"', 
-    # #                               on_bad_lines="skip",
-    # #                               assume_missing=True,
-    # #                               sample=1_100_000,
-    # #                               blocksize="256MB").rename(columns={'cif_name':'mof_name'}).reset_index(drop=True)
-    # # # Initialize parallel processing
-    # # ray.shutdown()
-    # # init(num_cpus=8)  # Use all available cores
-
-    # # # Read CSV in parallel (~2-3x faster than pandas)
-    # # cif_string_data = mpd.read_csv(
-    # #     cif_file_csv,
-    # #     dtype={'mof_name': 'string', 'cif_string': 'string'},
-    # #     engine="pyarrow",  # Fastest backend
-    # #     # quotechar='"'
-    # # )
-    # # cif_string_data = dd.read_parquet(cif_file_parquet)
-    # chunksize = 100000
-    # chunk_list = []  # Store processed chunks
-    # for chunk in pd.read_csv(cif_file_csv, chunksize=chunksize): #, engine='pyarrow'
-    #     chunk_list.append(chunk)
-    # cif_string_data = pd.concat(chunk_list).rename(columns={'cif_name':'mof_name'})
-    # print('CIF data loading complete! Used', time_format(time.time()-start))
-    
-    # # print("Total CIFs:", len(cif_string_data))
-
-    # # Load labels using Pandas (assuming they're smaller than CIF file)
-    # print('Loading the labels data...')
-    # start = time.time()
-    # dtype_dict = {'mof_name': 'str', property_name: 'float32'}  # Reduce memory
-    # train_data_labels = pd.read_csv(train_labels_file, usecols=['mof_name', property_name], dtype=dtype_dict)
-    # valid_data_labels = pd.read_csv(valid_labels_file, usecols=['mof_name', property_name], dtype=dtype_dict)
-    # test_data_labels = pd.read_csv(test_labels_file, usecols=['mof_name', property_name], dtype=dtype_dict)
-
-    # # Drop NaNs
-    # train_data_labels.dropna(subset=[property_name], inplace=True)
-    # valid_data_labels.dropna(subset=[property_name], inplace=True)
-    # test_data_labels.dropna(subset=[property_name], inplace=True)
-    # if property_name == 'FE_atom': 
-    #     train_data_labels = train_data_labels[train_data_labels[property_name] <= 150]
-    #     valid_data_labels = valid_data_labels[valid_data_labels[property_name] <= 150]
-    #     test_data_labels = test_data_labels[test_data_labels[property_name] <= 150]
-    # else:
-    #     train_data_labels = train_data_labels[train_data_labels[property_name] <= 10000]
-    #     valid_data_labels = valid_data_labels[valid_data_labels[property_name] <= 10000]
-    #     test_data_labels = test_data_labels[test_data_labels[property_name] <= 10000]
-
-    # print('Labels data loading complete! Used', time_format(time.time()-start))
-    # print(f'Train Labels: {len(train_data_labels)}, Valid Labels: {len(valid_data_labels)}, Test Labels: {len(test_data_labels)}')
-
-    # # Function for efficient merging using Dask
-    # def merge_dataframes(cif_df, label_df):
-    #     return cif_df.merge(label_df, on='mof_name', how='inner')
-
-    # # Merge using Dask for efficiency
-    # print('Merging the cif and label data...')
-    # start = time.time()
-    # train_data = merge_dataframes(cif_string_data, train_data_labels)
-    # valid_data = merge_dataframes(cif_string_data, valid_data_labels)
-    # test_data = merge_dataframes(cif_string_data, test_data_labels)
-    # print(test_data.head())
-    # print('Merging complete! Used', time_format(time.time()-start))
-
-    # # # Convert to Pandas (if necessary) after merging
-    # # print("Converting the data from dask to pandas...")
-    # # start = time.time()
-    # # train_data = train_data.compute()
-    # # valid_data = valid_data.compute()
-    # # test_data = test_data.compute()
-    # # print('converts complete! Used', time_format(time.time()-start))
-
-    # # Combine datasets before splitting
-    # print("Combining the sets to resplit them...")
-    # start = time.time()
-    # temp_data_all = pd.concat([train_data, valid_data, test_data], ignore_index=True)
-    # print('Combining complete! Used', time_format(time.time()-start))
-
-    # # Split into train (80%), valid (10%), test (10%)
-    # print("Splitting the data...")
-    # start = time.time()
-    # train_data, temp_data = train_test_split(temp_data_all, test_size=0.2, random_state=42)
-    # valid_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
-    # print('Splitting complete! Used', time_format(time.time()-start))
-    
     train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/train.csv")
-    # additional_train_data_old = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_no - 1}_{additional_samples_type}.csv")
-    # additional_train_data_new = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_no}_{additional_samples_type}.csv")
-    # train_data = concatenate_and_shuffle(train_data, additional_train_data_old)
-    # train_data = concatenate_and_shuffle(train_data, additional_train_data_new) 
-    
     valid_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/validation.csv")
     test_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/test.csv")
     
@@ -712,17 +557,6 @@ if __name__ == "__main__":
         valid_data['list_of_numbers_in_input'] = valid_data[input_type].apply(get_numbers_in_a_sentence)
         test_data['list_of_numbers_in_input'] = test_data[input_type].apply(get_numbers_in_a_sentence)
 
-        # # list_of_all_numbers_in_data = list(train_data['list_of_numbers_in_input']) + list(valid_data['list_of_numbers_in_input']) + list(test_data['list_of_numbers_in_input'])
-        # # normalized_list_of_all_numbers_in_data = normalize_values(list_of_all_numbers_in_data, min_value=-5, max_value=5)
-
-        # # train_data['normalized_list_of_numbers_in_input'] = normalized_list_of_all_numbers_in_data[0:len(train_data)]
-        # # valid_data['normalized_list_of_numbers_in_input'] = normalized_list_of_all_numbers_in_data[len(train_data):len(train_data)+len(valid_data)]
-        # # test_data['normalized_list_of_numbers_in_input'] = normalized_list_of_all_numbers_in_data[len(train_data)+len(valid_data):len(normalized_list_of_all_numbers_in_data)]
-
-        # train_data['normalized_list_of_numbers_in_input'] = normalize_values(list(train_data['list_of_numbers_in_input']), min_value=-5, max_value=5)
-        # valid_data['normalized_list_of_numbers_in_input'] = normalize_values(list(valid_data['list_of_numbers_in_input']), min_value=-5, max_value=5)
-        # test_data['normalized_list_of_numbers_in_input'] = normalize_values(list(test_data['list_of_numbers_in_input']), min_value=-5, max_value=5)
-
         train_data[input_type] = train_data[input_type].apply(replace_numbers_with_num)
         valid_data[input_type] = valid_data[input_type].apply(replace_numbers_with_num)
         test_data[input_type] = test_data[input_type].apply(replace_numbers_with_num)
@@ -732,11 +566,8 @@ if __name__ == "__main__":
             valid_data[input_type] = valid_data[input_type].apply(remove_mat_stopwords)
             test_data[input_type] = test_data[input_type].apply(remove_mat_stopwords)
 
-        # print(train_data.head(1))
-        # print('-'*50)
         print(train_data[input_type][0])
         print('-'*50)
-        # print(valid_data[input_type][0])
 
     # define loss functions
     mae_loss_function = nn.L1Loss()
@@ -933,7 +764,7 @@ if __name__ == "__main__":
     predictions = []
     test_results = []
 
-    for i in range(2):
+    for i in range(5):
         torch.manual_seed(42 + i)
         np.random.seed(42 + i)  
         predictions_list, test_performance = evaluate(best_model, mae_loss_function, test_dataloader, train_labels_mean, train_labels_std, property_name, device, task_name, normalizer=normalizer_type)
@@ -952,6 +783,3 @@ if __name__ == "__main__":
     # save the averaged predictions
     test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property_name}":list(test_data[property_name]), f"predicted_{property_name}":averaged_predictions}
     saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/mofbench_{model_name}_test_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
-    
-    wandb.finish()
-    
