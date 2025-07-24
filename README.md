@@ -11,7 +11,7 @@ This repository contains the implementation of our proposed machine learning app
 For more details check [our pre-print](https://chemrxiv.org/engage/chemrxiv/article-details/686fedbc43bc52e4ec4edfc6)
 
 ## Installation
-You can install LLM-Prop by following these steps:
+You can install MOF-FreeEnergy by following these steps:
 ```
 git clone https://github.com/vertaix/MOF-FreeEnergy.git
 cd MOF-FreeEnergy
@@ -20,7 +20,7 @@ conda activate <environment_name>
 ```
 ## Usage
 ### Preparing the data
-Refer to this [notebook](data_preparation.ipynb) and change the `paths` and the `max_len` value accordingly. The prepared data for 2000 max_len can also be directly downloaded from this [link](https://drive.google.com/drive/folders/18joRpZCNW8guhHTtjZJYA0IAsE3-Wm-7)
+Refer to this [notebook](data_preparation.ipynb) and change the `paths` and the `max_len` value accordingly. The prepared data for 2000 max_len can also be directly downloaded from this [link](https://drive.google.com/drive/folders/18joRpZCNW8guhHTtjZJYA0IAsE3-Wm-7).
 
 ### Training
 Run 
