@@ -160,42 +160,26 @@ if __name__ == "__main__":
     if model_name == "matbert":
         pooling = None
 
-    # # checkpoints directory
-    # checkpoints_directory = f"/n/fs/rnspace/projects/vertaix/nlp4matbench/checkpoints/{dataset_name}/"
-    # if not os.path.exists(checkpoints_directory):
-    #     os.makedirs(checkpoints_directory)
-
-    # # training statistics directory
-    # statistics_directory = f"/n/fs/rnspace/projects/vertaix/nlp4matbench/statistics/{dataset_name}/"
-    # if not os.path.exists(statistics_directory):
-    #     os.makedirs(statistics_directory)
-
-    # # prepare the data 
+    # prepare the data 
     def concatenate_and_shuffle(df_1, df_2):
         concatenated_df = pd.concat([df_1, df_2], ignore_index=True)
         shuffled_df = concatenated_df.sample(frac=1, random_state=42).reset_index(drop=True)
         return shuffled_df
 
-    train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/train.csv")
-    additional_train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_no}_{additional_samples_type}.csv")
+    train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/{property_name.lower()}/train.csv")
+    additional_train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_no}_{additional_samples_type}.csv")
     train_data = concatenate_and_shuffle(train_data, additional_train_data)
     
-    test_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/test.csv")
-    # valid_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/fe_atom/validation.csv")
-    # print(len(train_data))
+    test_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/fe_atom/test.csv")
     
     # drop duplicates in test data
     if input_type in ["mof_name","mofkey","mofid_v1"]:
         train_data = train_data.dropna(subset=[input_type]).reset_index(drop=True)
         test_data = test_data.dropna(subset=[input_type]).reset_index(drop=True)
-        # valid_data = valid_data.dropna(subset=[input_type]).reset_index(drop=True)
-    # print(len(train_data))
-    
-    
+
     # define the tokenizer
     if tokenizer_name == 't5_tokenizer':
-        tokenizer = AutoTokenizer.from_pretrained("t5-small") 
-        # tokenizer = AutoTokenizer.from_pretrained("t5-small", device_map='auto')
+        tokenizer = AutoTokenizer.from_pretrained("t5-small")
 
     elif tokenizer_name == 'modified':
         tokenizer = AutoTokenizer.from_pretrained("/n/fs/rnspace/projects/vertaix/LLM-Prop/tokenizers/new_pretrained_t5_tokenizer_on_modified_oneC4files_and_mp22_web_descriptions_32k_vocab") #old_version_trained_on_mp_web_only
@@ -236,17 +220,10 @@ if __name__ == "__main__":
         test_data = combine_mof_string_representations(test_data, tokenizer, input_type, max_length=max_length) 
     elif input_type == "mofname_and_mofid":
         train_data = combined_mofname_and_mofid(train_data, tokenizer, input_type, max_length=max_length)
-        # valid_data = combined_mofname_and_mofid(valid_data, tokenizer, input_type, max_length=max_length)
         test_data = combined_mofname_and_mofid(test_data, tokenizer, input_type, max_length=max_length)
         
     train_data = train_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     test_data = test_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
-    # valid_data = valid_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
-    # print(len(train_data))
-    # train_data = train_data.dropna(subset=[property_name]).reset_index(drop=True)
-    # print(len(train_data))
-    
-    # print("\n number of test samples = ", len(test_data),'\n')
     
     train_labels_array = np.array(train_data[property_name])
     train_labels_mean = torch.mean(torch.tensor(train_labels_array))
@@ -261,10 +238,7 @@ if __name__ == "__main__":
 
     elif preprocessing_strategy == "xVal":
         train_data['list_of_numbers_in_input'] = train_data[input_type].apply(get_numbers_in_a_sentence)
-        # test_data['list_of_numbers_in_input'] = test_data[input_type].apply(get_numbers_in_a_sentence)
-
         train_data[input_type] = train_data[input_type].apply(replace_numbers_with_num)
-        # test_data[input_type] = test_data[input_type].apply(replace_numbers_with_num)
 
     # define loss functions
     mae_loss_function = nn.L1Loss()
@@ -278,12 +252,10 @@ if __name__ == "__main__":
         '2':'valid'
     }
     input_to_ckpt = {
-        'mof_name': '/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mof_name_none_153_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt',
-        'mofkey':'/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofkey_none_102_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt', 
-        'mofid_v1':'/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofid_v1_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
-        'mofname_and_mofid':f'/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
-        # 'mofseq_finetune':'/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_finetune_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt'
-        
+        'mof_name': '/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mof_name_none_153_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt',
+        'mofkey':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofkey_none_102_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt', 
+        'mofid_v1':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofid_v1_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
+        'mofname_and_mofid':f'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
     }
     
     for j, data in enumerate([test_data]):
@@ -345,7 +317,7 @@ if __name__ == "__main__":
             base_model.resize_token_embeddings(len(tokenizer))
             
             best_model_path = input_to_ckpt[input_type]
-            # best_model_path = '/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_finetune_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt'
+            # best_model_path = '/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt'
             
             best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
 
@@ -375,13 +347,13 @@ if __name__ == "__main__":
             )
             
             predictions_list, test_performance = evaluate(best_model, mae_loss_function, dataloader, train_labels_mean, train_labels_std, property, device, task_name, normalizer=normalizer_type)
-            # predictions.append(predictions_list)
-            # test_results.append(test_performance)
+            predictions.append(predictions_list)
+            test_results.append(test_performance)
 
-        # # save the averaged predictions
-        # data['predicted_FE_atom'] = predictions_list
-        # data.to_csv(f"vertaix/MOF_Free_Energy_Prediction/statistics/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_test_stats_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
+        # save the averaged predictions
+        data['predicted_FE_atom'] = predictions_list
+        data.to_csv(f"vertaix/MOF-FreeEnergy/statistics/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_test_stats_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
         
-        # test_predictions = {f"mof_name":list(train_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
-        # saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/llm4mat_rebuttal_{model_name}_test_stats_for_{property}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_200_epochs.csv")
+        test_predictions = {f"mof_name":list(train_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
+        saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/llm4mat_rebuttal_{model_name}_test_stats_for_{property}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_200_epochs.csv")
         
