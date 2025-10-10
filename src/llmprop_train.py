@@ -10,7 +10,6 @@ from datetime import timedelta
 
 import numpy as np
 import pandas as pd
-import dask.dataframe as dd
 
 import torch
 import torch.nn as nn
@@ -83,40 +82,28 @@ def train(
         model.train()
 
         for step, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
-            if preprocessing_strategy == 'xVal':
-                batch_inputs, batch_masks, batch_labels, batch_norm_labels, batch_x_num = tuple(b.to(device) for b in batch)
-                _, predictions = model(batch_inputs, batch_masks, x_num=batch_x_num)
-            else:
-                batch_inputs, batch_masks, batch_labels, batch_norm_labels = tuple(b.to(device) for b in batch)
-                _, predictions = model(batch_inputs, batch_masks)
+            batch_inputs, batch_masks, batch_labels, batch_norm_labels = tuple(b.to(device) for b in batch)
+            _, predictions = model(batch_inputs, batch_masks)
 
-            if task_name == 'classification':
-                loss = bce_loss_function(predictions.squeeze(), batch_labels.squeeze())
+            loss = mae_loss_function(predictions.squeeze(), batch_norm_labels.squeeze())
             
-            elif task_name == 'regression':
-                loss = mae_loss_function(predictions.squeeze(), batch_norm_labels.squeeze())
-                
-                if normalizer == 'z_norm':
-                    predictions_denorm = z_denormalize(predictions, train_labels_mean, train_labels_std)
+            if normalizer == 'z_norm':
+                predictions_denorm = z_denormalize(predictions, train_labels_mean, train_labels_std)
 
-                elif normalizer == 'mm_norm':
-                    predictions_denorm = mm_denormalize(predictions, train_labels_min, train_labels_max)
+            elif normalizer == 'mm_norm':
+                predictions_denorm = mm_denormalize(predictions, train_labels_min, train_labels_max)
 
-                elif normalizer == 'ls_norm':
-                    predictions_denorm = ls_denormalize(predictions)
+            elif normalizer == 'ls_norm':
+                predictions_denorm = ls_denormalize(predictions)
 
-                elif normalizer == 'no_norm':
-                    loss = mae_loss_function(predictions.squeeze(), batch_labels.squeeze())
-                    predictions_denorm = predictions
+            elif normalizer == 'no_norm':
+                loss = mae_loss_function(predictions.squeeze(), batch_labels.squeeze())
+                predictions_denorm = predictions
 
-                mae_loss = mae_loss_function(predictions_denorm.squeeze(), batch_labels.squeeze()) 
+            mae_loss = mae_loss_function(predictions_denorm.squeeze(), batch_labels.squeeze()) 
 
             # total training loss on actual output
-            if task_name == "classification":
-                total_training_loss += loss.item()
-            
-            elif task_name == "regression":
-                total_training_loss += mae_loss.item()
+            total_training_loss += mae_loss.item()
 
             # back propagate
             loss.backward()
@@ -148,28 +135,20 @@ def train(
 
         for step, batch in tqdm(enumerate(valid_dataloader), total=len(valid_dataloader)):
             with torch.no_grad():
-                if preprocessing_strategy == 'xVal':
-                    batch_inputs, batch_masks, batch_labels, batch_x_num = tuple(b.to(device) for b in batch)
-                    _, predictions = model(batch_inputs, batch_masks, x_num=batch_x_num)
-                else:
-                    batch_inputs, batch_masks, batch_labels = tuple(b.to(device) for b in batch)
-                    _, predictions = model(batch_inputs, batch_masks)
+                batch_inputs, batch_masks, batch_labels = tuple(b.to(device) for b in batch)
+                _, predictions = model(batch_inputs, batch_masks)
 
-                if task_name == "classification":
+                if normalizer == 'z_norm':
+                    predictions_denorm = z_denormalize(predictions, train_labels_mean, train_labels_std)
+
+                elif normalizer == 'mm_norm':
+                    predictions_denorm = mm_denormalize(predictions, train_labels_min, train_labels_max)
+
+                elif normalizer == 'ls_norm':
+                    predictions_denorm = ls_denormalize(predictions)
+
+                elif normalizer == 'no_norm':
                     predictions_denorm = predictions
-
-                elif task_name == "regression":
-                    if normalizer == 'z_norm':
-                        predictions_denorm = z_denormalize(predictions, train_labels_mean, train_labels_std)
-
-                    elif normalizer == 'mm_norm':
-                        predictions_denorm = mm_denormalize(predictions, train_labels_min, train_labels_max)
-
-                    elif normalizer == 'ls_norm':
-                        predictions_denorm = ls_denormalize(predictions)
-
-                    elif normalizer == 'no_norm':
-                        predictions_denorm = predictions
 
             predictions = predictions_denorm.detach().cpu().numpy()
             targets = batch_labels.detach().cpu().numpy()
@@ -182,86 +161,46 @@ def train(
         validation_time = time_format(valid_ending_time-valid_start_time)
 
         # save model checkpoint and the statistics of the epoch where the model performs the best
-        if task_name == "classification":
-            valid_performance = get_roc_score(predictions_list, targets_list)
+        predictions_tensor = torch.tensor(predictions_list)
+        targets_tensor = torch.tensor(targets_list)
+        valid_performance = mae_loss_function(predictions_tensor.squeeze(), targets_tensor.squeeze())
+    
+        if valid_performance <= best_loss:
+            best_loss = valid_performance
+            best_epoch = epoch+1
+
+            # save the best model checkpoint
+            save_to_path = checkpoints_directory + f"best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"
             
-            if valid_performance >= best_roc:
-                best_roc = valid_performance
-                best_epoch = epoch+1
-
-                # save the best model checkpoint
-                save_to_path = checkpoints_directory + f"/mofbench_{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}.pt"
-                
-                if isinstance(model, nn.DataParallel):
-                    torch.save(model.module.state_dict(), save_to_path)
-                else:
-                    torch.save(model.state_dict(), save_to_path)
-                
-                # save statistics of the best model
-                training_stats.append(
-                    {
-                        "best_epoch": epoch + 1,
-                        "training_loss": average_training_loss,
-                        "validation_roc_score": valid_performance,
-                        "training time": training_time,
-                        "validation time": validation_time
-                    }
-                )
-
-                validation_predictions.update(
-                    {
-                        f"epoch_{epoch+1}": predictions_list
-                    }
-                )
-
-                saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/mofbench_{model_name}_training_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
-                saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/mofbench_{model_name}_validation_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
+            if isinstance(model, nn.DataParallel):
+                torch.save(model.module.state_dict(), save_to_path)
             else:
-                best_roc = best_roc
+                torch.save(model.state_dict(), save_to_path)
+            
+            # save statistics of the best model
+            training_stats.append(
+                {
+                    "best_epoch": epoch + 1,
+                    "training mae loss": average_training_loss,
+                    "validation mae loss": valid_performance,
+                    "training time": training_time,
+                    "validation time": validation_time
+                }
+            )
 
-            print(f"Validation roc score = {valid_performance}")
+            validation_predictions.update(
+                {
+                    f"epoch_{epoch+1}": predictions_list
+                }
+            )
 
-        elif task_name == "regression":
-            predictions_tensor = torch.tensor(predictions_list)
-            targets_tensor = torch.tensor(targets_list)
-            valid_performance = mae_loss_function(predictions_tensor.squeeze(), targets_tensor.squeeze())
+            saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/{model_name}-{input_type}_training_stats_for_{property_name}_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
+            saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/{model_name}-{input_type}_validation_stats_for_{property_name}_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
+            
+        else:
+            best_loss = best_loss
         
-            if valid_performance <= best_loss:
-                best_loss = valid_performance
-                best_epoch = epoch+1
-
-                # save the best model checkpoint
-                save_to_path = checkpoints_directory + f"/mofbench_{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.pt"
-                
-                if isinstance(model, nn.DataParallel):
-                    torch.save(model.module.state_dict(), save_to_path)
-                else:
-                    torch.save(model.state_dict(), save_to_path)
-                
-                # save statistics of the best model
-                training_stats.append(
-                    {
-                        "best_epoch": epoch + 1,
-                        "training mae loss": average_training_loss,
-                        "validation mae loss": valid_performance,
-                        "training time": training_time,
-                        "validation time": validation_time
-                    }
-                )
-
-                validation_predictions.update(
-                    {
-                        f"epoch_{epoch+1}": predictions_list
-                    }
-                )
-
-                saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/mofbench_{model_name}_training_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
-                saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/mofbench_{model_name}_validation_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
-                
-            else:
-                best_loss = best_loss
-            
-            print(f"Validation mae error = {valid_performance}")
+        print(f"Validation mae error = {valid_performance}")
         print(f"validation took {validation_time}")
 
     train_ending_time = time.time()
@@ -269,12 +208,7 @@ def train(
 
     print("\n========== Training complete ========")
     print(f"Training LLM_Prop on {property_name} prediction took {time_format(total_training_time)}")
-
-    if task_name == "classification":
-        print(f"The lowest validation ROC score on predicting {property_name} = {best_roc} at {best_epoch}th epoch \n")
-
-    elif task_name == "regression":
-        print(f"The lowest validation MAE error on predicting {property_name} = {best_loss} at {best_epoch}th epoch \n")
+    print(f"The lowest validation MAE error on predicting {property_name} = {best_loss} at {best_epoch}th epoch \n")
     
     return training_stats, validation_predictions
 
@@ -299,28 +233,20 @@ def evaluate(
 
     for step, batch in enumerate(test_dataloader):
         with torch.no_grad():
-            if preprocessing_strategy == 'xVal':
-                batch_inputs, batch_masks, batch_labels, batch_x_num = tuple(b.to(device) for b in batch)
-                _, predictions = model(batch_inputs, batch_masks, x_num=batch_x_num)
-            else:
-                batch_inputs, batch_masks, batch_labels = tuple(b.to(device) for b in batch)
-                _, predictions = model(batch_inputs, batch_masks)
+            batch_inputs, batch_masks, batch_labels = tuple(b.to(device) for b in batch)
+            _, predictions = model(batch_inputs, batch_masks)
 
-            if task_name == "classification":
+            if normalizer == 'z_norm':
+                predictions_denorm = z_denormalize(predictions, train_labels_mean, train_labels_std)
+
+            elif normalizer == 'mm_norm':
+                predictions_denorm = mm_denormalize(predictions, train_labels_min, train_labels_max)
+
+            elif normalizer == 'ls_norm':
+                predictions_denorm = ls_denormalize(predictions)
+
+            elif normalizer == 'no_norm':
                 predictions_denorm = predictions
-
-            elif task_name == "regression":
-                if normalizer == 'z_norm':
-                    predictions_denorm = z_denormalize(predictions, train_labels_mean, train_labels_std)
-
-                elif normalizer == 'mm_norm':
-                    predictions_denorm = mm_denormalize(predictions, train_labels_min, train_labels_max)
-
-                elif normalizer == 'ls_norm':
-                    predictions_denorm = ls_denormalize(predictions)
-
-                elif normalizer == 'no_norm':
-                    predictions_denorm = predictions
 
         predictions = predictions_denorm.detach().cpu().numpy()
         targets = batch_labels.detach().cpu().numpy()
@@ -328,20 +254,15 @@ def evaluate(
         for i in range(len(predictions)):
             predictions_list.append(predictions[i][0])
             targets_list.append(targets[i])
-        
-    if task_name == "classification":
-        test_performance = get_roc_score(predictions_list, targets_list)
-        print(f"\n Test ROC score on predicting {property_name} = {test_performance}")
 
-    elif task_name == "regression":
-        predictions_tensor = torch.tensor(predictions_list)
-        targets_tensor = torch.tensor(targets_list)
-        test_performance = mae_loss_function(predictions_tensor.squeeze(), targets_tensor.squeeze())
-        r2 = metrics.r2_score(targets_list, predictions_list)
+    predictions_tensor = torch.tensor(predictions_list)
+    targets_tensor = torch.tensor(targets_list)
+    test_performance = mae_loss_function(predictions_tensor.squeeze(), targets_tensor.squeeze())
+    r2 = metrics.r2_score(targets_list, predictions_list)
 
-        print(f"\n The test performance on predicting {property_name}:")
-        print(f"MAE error = {test_performance}")
-        print(f"R2 score = {r2}")
+    print(f"\n The test performance on predicting {property_name}:")
+    print(f"MAE error = {test_performance}")
+    print(f"R2 score = {r2}")
 
     average_test_loss = total_test_loss / len(test_dataloader)
     test_ending_time = time.time()
@@ -350,32 +271,13 @@ def evaluate(
 
     return predictions_list, test_performance
 
-def show_gpu(msg):
-    """
-    ref: https://discuss.pytorch.org/t/access-gpu-memory-usage-in-pytorch/3192/4
-    """
-    def query(field):
-        return(subprocess.check_output(
-            ['nvidia-smi', f'--query-gpu={field}',
-                '--format=csv,nounits,noheader'], 
-            encoding='utf-8'))
-    def to_int(result):
-        return int(result.strip().split('\n')[0])
-    
-    used = to_int(query('memory.used'))
-    total = to_int(query('memory.total'))
-    pct = used/total
-    print('\n' + msg, f'{100*pct:2.1f}% ({used} out of {total})')
-
 def concatenate_and_shuffle(df_1, df_2):
     concatenated_df = pd.concat([df_1, df_2], ignore_index=True)
     shuffled_df = concatenated_df.sample(frac=1, random_state=42).reset_index(drop=True)
     return shuffled_df
 
 if __name__ == "__main__":
-    show_gpu("before doing anything")
     torch.cuda.empty_cache()
-    show_gpu("after empty cache")
 
     # parse Arguments
     args = args_parser()
@@ -417,38 +319,24 @@ if __name__ == "__main__":
     finetuned_property_name = "SE_atom"
     iteration_no = config.get('iteration_no')
     additional_samples_type = config.get('additional_samples_type')
-
-    if model_name in ["matbert", "matbert_finetune"]:
-        pooling = None
-    
     n_gpus = torch.cuda.device_count()
 
     # checkpoints directory
-    checkpoints_directory = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/{dataset_name}/"
+    checkpoints_directory = f"checkpoints/{property_name.lower()}/"
     if not os.path.exists(checkpoints_directory):
         os.makedirs(checkpoints_directory)
 
     # training statistics directory
-    statistics_directory = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/statistics/{dataset_name}/"
+    statistics_directory = f"results/{property_name.lower()}/"
     if not os.path.exists(statistics_directory):
         os.makedirs(statistics_directory)
 
-    train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/train.csv")
-    valid_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/validation.csv")
-    test_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/data/properties/{property_name.lower()}/test.csv")
+    train_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/train.csv")
+    valid_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/validation.csv")
+    test_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/test.csv")
     
     # define the tokenizer
-    if tokenizer_name == 't5_tokenizer':
-        tokenizer = AutoTokenizer.from_pretrained("t5-small") 
-
-    elif tokenizer_name == 'modified':
-        tokenizer = AutoTokenizer.from_pretrained("/n/fs/rnspace/projects/vertaix/LLM-Prop/tokenizers/new_pretrained_t5_tokenizer_on_modified_oneC4files_and_mp22_web_descriptions_32k_vocab") #old_version_trained_on_mp_web_only
-
-    elif tokenizer_name == 'matbert_tokenizer':
-        tokenizer = BertTokenizerFast.from_pretrained("/n/fs/rnspace/projects/vertaix/MatBERT/matbert-base-uncased", do_lower_case=True)
-        
-    elif tokenizer_name in ['qmof_cbe512_tokenizer']:
-        tokenizer = AutoTokenizer.from_pretrained(f"/n/fs/rnspace/projects/vertaix/cbe_512_project/tokenizers/qmof_{input_type}_10k_vocab")
+    tokenizer = AutoTokenizer.from_pretrained("t5-small") 
 
     # add defined special tokens to the tokenizer
     if pooling == 'cls':
@@ -461,7 +349,7 @@ if __name__ == "__main__":
                               "<mofid>","</mofid>",
                               "<mofkey>","</mofkey>"
                               ])
-    elif input_type == "mofname_and_mofid":
+    elif input_type == "mofseq":
         tokenizer.add_tokens(["<mofname>","</mofname>",
                               "<mofid>","</mofid>",
                               ])
@@ -489,10 +377,10 @@ if __name__ == "__main__":
         train_data = combine_mof_string_representations(train_data, tokenizer, input_type, max_length=max_length)
         valid_data = combine_mof_string_representations(valid_data, tokenizer, input_type, max_length=max_length)
         test_data = combine_mof_string_representations(test_data, tokenizer, input_type, max_length=max_length)
-    elif input_type == "mofname_and_mofid":
-        train_data = combined_mofname_and_mofid(train_data, tokenizer, input_type, max_length=max_length)
-        valid_data = combined_mofname_and_mofid(valid_data, tokenizer, input_type, max_length=max_length)
-        test_data = combined_mofname_and_mofid(test_data, tokenizer, input_type, max_length=max_length)
+    elif input_type == "mofseq":
+        train_data = generate_mofseq(train_data, tokenizer, input_type, max_length=max_length)
+        valid_data = generate_mofseq(valid_data, tokenizer, input_type, max_length=max_length)
+        test_data = generate_mofseq(test_data, tokenizer, input_type, max_length=max_length)
         
     train_data = train_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     valid_data = valid_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
@@ -510,34 +398,7 @@ if __name__ == "__main__":
     print('-'*100)
 
     train_data = train_data.loc[0:int(len(train_data)*training_size)]
-
-    # check property type to determine the task name (whether it is regression or classification)
-    if train_data[property_name].dtype in ['bool', 'O']:
-        task_name = 'classification'
-        
-        if property in ['Direct_or_indirect', 'Direct_or_indirect_HSE']:
-            #converting Direct->1.0 and Indirect->0.0
-            train_data = train_data.drop(train_data[train_data[property_name] == 'Null'].index).reset_index(drop=True)
-            train_data.loc[train_data[property_name] == "Direct", property_name] = 1.0
-            train_data.loc[train_data[property_name] == "Indirect", property_name] = 0.0
-            train_data[property_name] = train_data[property_name].astype(float)
-
-            valid_data = valid_data.drop(valid_data[valid_data[property_name] == 'Null'].index).reset_index(drop=True)
-            valid_data.loc[valid_data[property_name] == "Direct", property_name] = 1.0
-            valid_data.loc[valid_data[property_name] == "Indirect", property_name] = 0.0
-            valid_data[property_name] = valid_data[property_name].astype(float)
-
-            test_data = test_data.drop(test_data[test_data[property_name] == 'Null'].index).reset_index(drop=True)
-            test_data.loc[test_data[property_name] == "Direct", property_name] = 1.0
-            test_data.loc[test_data[property_name] == "Indirect", property_name] = 0.0
-            test_data[property_name] = test_data[property_name].astype(float)
-        else:
-            #converting True->1.0 and False->0.0
-            train_data[property_name] = train_data[property_name].astype(float)
-            valid_data[property_name] = valid_data[property_name].astype(float) 
-            test_data[property_name] = test_data[property_name].astype(float)  
-    else:
-        task_name = 'regression'
+    task_name = 'regression'
     
     train_labels_array = np.array(train_data[property_name])
     train_labels_mean = torch.mean(torch.tensor(train_labels_array))
@@ -552,38 +413,21 @@ if __name__ == "__main__":
         print('\n', train_data[input_type][0])
         print('-'*50)
 
-    elif preprocessing_strategy == "xVal":
-        train_data['list_of_numbers_in_input'] = train_data[input_type].apply(get_numbers_in_a_sentence)
-        valid_data['list_of_numbers_in_input'] = valid_data[input_type].apply(get_numbers_in_a_sentence)
-        test_data['list_of_numbers_in_input'] = test_data[input_type].apply(get_numbers_in_a_sentence)
-
-        train_data[input_type] = train_data[input_type].apply(replace_numbers_with_num)
-        valid_data[input_type] = valid_data[input_type].apply(replace_numbers_with_num)
-        test_data[input_type] = test_data[input_type].apply(replace_numbers_with_num)
-
-        if input_type == "description":
-            train_data[input_type] = train_data[input_type].apply(remove_mat_stopwords)
-            valid_data[input_type] = valid_data[input_type].apply(remove_mat_stopwords)
-            test_data[input_type] = test_data[input_type].apply(remove_mat_stopwords)
-
-        print(train_data[input_type][0])
-        print('-'*50)
-
     # define loss functions
     mae_loss_function = nn.L1Loss()
     bce_loss_function = nn.BCEWithLogitsLoss()
 
     freeze = False # a boolean variable to determine if we freeze the pre-trained T5 weights
-    
-    if max_length <= 888:
-        train_batch_size = 64 * n_gpus
-        inference_batch_size = 128 * n_gpus
-    elif max_length == 1500:
-        train_batch_size = 32 * n_gpus
-        inference_batch_size = 64 * n_gpus
-    elif max_length == 2000:
-        train_batch_size = 16 * n_gpus
-        inference_batch_size = 32 * n_gpus
+    if torch.cuda.is_available():
+        if max_length <= 888:
+            train_batch_size = 64 * n_gpus
+            inference_batch_size = 128 * n_gpus
+        elif max_length > 888 and max_length <= 1500:
+            train_batch_size = 32 * n_gpus
+            inference_batch_size = 64 * n_gpus
+        elif max_length > 1500 and max_length <= 2000:
+            train_batch_size = 16 * n_gpus
+            inference_batch_size = 32 * n_gpus
 
     print('-'*50)
     print(f"train data = {len(train_data)} samples")
@@ -604,12 +448,8 @@ if __name__ == "__main__":
 
     # define the model
     if model_name in ["llmprop", "llmprop_finetune"]:
-        base_model = T5EncoderModel.from_pretrained("google/t5-v1_1-small") #, torch_dtype=torch.float16
-        # base_model = T5EncoderModel.from_pretrained("google/t5-v1_1-small", device_map='auto', load_in_8bit=True, torch_dtype=torch.float16)
+        base_model = T5EncoderModel.from_pretrained("google/t5-v1_1-small") 
         base_model_output_size = 512
-    elif model_name in ["matbert", "matbert_finetune"]:
-        base_model = BertModel.from_pretrained("/n/fs/rnspace/projects/vertaix/MatBERT/matbert-base-uncased")
-        base_model_output_size = 768
 
     # freeze the pre-trained LM's parameters
     if freeze:
@@ -631,7 +471,7 @@ if __name__ == "__main__":
         model.to(device)
         
     if model_name in ["llmprop_finetune", "matbert_finetune"]:
-        pretrained_model_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_SE_atom_regression_{input_type}_none_{max_length}_tokens_100_epochs_0.001_0.2_100.0%_no_outliers.pt"
+        pretrained_model_path = f"checkpoints/se_atom/best_llmprop-mofseq_checkpoint_for_MOF_SE_atom_prediction.pt"
    
         if isinstance(model, nn.DataParallel):
             model.module.load_state_dict(torch.load(pretrained_model_path, map_location=torch.device(device)), strict=False)
@@ -645,6 +485,7 @@ if __name__ == "__main__":
 
     # create dataloaders
     print("Start creating train dataloader...")
+    print(train_batch_size, inference_batch_size)
     start = time.time()
     train_dataloader = create_dataloaders(
         tokenizer, 
@@ -739,14 +580,12 @@ if __name__ == "__main__":
         )
     
     print("======= Training ... ========")
-    show_gpu("before training")
     torch.cuda.empty_cache()
     training_stats, validation_predictions = train(model, optimizer, scheduler, bce_loss_function, mae_loss_function, 
         epochs, train_dataloader, valid_dataloader, device, normalizer=normalizer_type)
-    show_gpu('after training')
     
     print("======= Evaluating on test set ========")
-    best_model_path = f"/n/fs/rnspace/projects/vertaix/MOF_Free_Energy_Prediction/checkpoints/{dataset_name}/mofbench_{model_name}_best_checkpoint_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.pt"
+    best_model_path = f"{checkpoints_directory}/best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"
     best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
 
     if torch.cuda.is_available():
@@ -782,4 +621,4 @@ if __name__ == "__main__":
 
     # save the averaged predictions
     test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property_name}":list(test_data[property_name]), f"predicted_{property_name}":averaged_predictions}
-    saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/mofbench_{model_name}_test_stats_for_{property_name}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_{training_size*100}%_no_outliers.csv")
+    saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/{model_name}-{input_type}_test_stats_for_{property_name}_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")

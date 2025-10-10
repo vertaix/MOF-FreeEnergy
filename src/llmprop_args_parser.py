@@ -53,9 +53,9 @@ def args_parser():
                         type=str,
                         default="onecycle")
     parser.add_argument('--property_name', 
-                        help='The name of the property to predict. "band_gap", "volume", or "is_gap_direct"',
+                        help='The name of the property to predict.',
                         type=str,
-                        default="band_gap")
+                        default="FE_atom")
     parser.add_argument('--optimizer', 
                         help='Optimizer type. "adamw" or "sgd"',
                         type=str,
@@ -87,7 +87,7 @@ def args_parser():
     parser.add_argument('--input_type',
                         help="description, structure, or composition",
                         type=str,
-                        default="description")
+                        default="mofseq")
     parser.add_argument('--dataset_name',
                         help="mp, ...",
                         type=str,

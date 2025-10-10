@@ -142,3 +142,30 @@ def generate_mofseq(df, tokenizer, mof_representation='mofseq', max_length=2000)
 
     df[mof_representation] = combined_mof_strs
     return df
+
+def generate_mofseq_str(mofname: str, mofid: str, tokenizer, max_length: int = 2000):
+    mof_seqs = []
+    
+    if isinstance(mofname, str):
+        mofname = [mofname]
+    if isinstance(mofid, str):
+        mofid = [mofid]
+    if len(mofname) != len(mofid):
+        raise ValueError("mofname list and mofid list must have the same length.")
+    
+    for m_name, m_id in zip(mofname, mofid):
+        mof_name = f"<mofname>{m_name}</mofname>"
+        mof_id = f"<mofid>{clean_mofid(m_id)}</mofid>"
+
+        combined_mof_str = f"{mof_name}{mof_id}"
+
+        if len(tokenizer.tokenize(combined_mof_str)) < max_length:
+            mof_seqs.append(combined_mof_str)
+        else:
+            part_1 = f"{mof_name}"
+            part_1_len = len(tokenizer.tokenize(part_1))
+            mofid_len = max_length - part_1_len - 7  # Reserve 7 tokens for special tokens
+            
+            truncated_mofid = truncate_sentence(tokenizer, mofid_len, clean_mofid(m_id))
+            mof_seqs.append(f"{mof_name}<mofid>{truncated_mofid}</mofid>")
+    return mof_seqs
