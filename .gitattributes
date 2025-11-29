@@ -2,3 +2,5 @@
 /n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/se_atom/** filter=lfs diff=lfs merge=lfs -text
 checkpoints/fe_atom/best_llmprop-mofseq_checkpoint_for_MOF_FE_atom_prediction.pt filter=lfs diff=lfs merge=lfs -text
 checkpoints/se_atom/best_llmprop-mofseq_checkpoint_for_MOF_SE_atom_prediction.pt filter=lfs diff=lfs merge=lfs -text
+/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/se_atom/mofseq filter=lfs diff=lfs merge=lfs -text
+/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/se_atom/raw filter=lfs diff=lfs merge=lfs -text
