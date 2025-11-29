@@ -28,10 +28,10 @@ from tokenizers.pre_tokenizers import Whitespace
 pre_tokenizer = Whitespace()
 
 # pre-defined functions
-from llmprop_multimodal_model import Predictor
+from llmprop_model import Predictor
 from llmprop_utils import *
-from llmprop_multimodal_dataset import *
-from llmprop_multimodal_args_parser import *
+from llmprop_dataset import *
+from llmprop_args_parser import *
 
 # for metrics
 from torchmetrics.classification import BinaryAUROC
@@ -166,26 +166,14 @@ if __name__ == "__main__":
         shuffled_df = concatenated_df.sample(frac=1, random_state=42).reset_index(drop=True)
         return shuffled_df
 
-    train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/{property_name.lower()}/train.csv")
-    additional_train_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/{property_name.lower()}/iterative_training/additional_train_data_for_iteration_{iteration_no}_{additional_samples_type}.csv")
-    train_data = concatenate_and_shuffle(train_data, additional_train_data)
-    
-    test_data = pd.read_csv(f"/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/properties/fe_atom/test.csv")
+    test_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/test.csv")
     
     # drop duplicates in test data
     if input_type in ["mof_name","mofkey","mofid_v1"]:
-        train_data = train_data.dropna(subset=[input_type]).reset_index(drop=True)
         test_data = test_data.dropna(subset=[input_type]).reset_index(drop=True)
 
     # define the tokenizer
-    if tokenizer_name == 't5_tokenizer':
-        tokenizer = AutoTokenizer.from_pretrained("t5-small")
-
-    elif tokenizer_name == 'modified':
-        tokenizer = AutoTokenizer.from_pretrained("/n/fs/rnspace/projects/vertaix/LLM-Prop/tokenizers/new_pretrained_t5_tokenizer_on_modified_oneC4files_and_mp22_web_descriptions_32k_vocab") #old_version_trained_on_mp_web_only
-
-    elif tokenizer_name == 'matbert_tokenizer':
-        tokenizer = BertTokenizerFast.from_pretrained("/n/fs/rnspace/projects/vertaix/MatBERT/matbert-base-uncased", do_lower_case=True)
+    tokenizer = AutoTokenizer.from_pretrained("t5-small")
 
     # add defined special tokens to the tokenizer
     if pooling == 'cls':
@@ -201,44 +189,31 @@ if __name__ == "__main__":
                               "<mofid>","</mofid>",
                               "<mofkey>","</mofkey>"
                               ])
-    elif input_type == "mofname_and_mofid":
+    elif input_type == "mofseq":
         tokenizer.add_tokens(["<mofname>","</mofname>",
                               "<mofid>","</mofid>",
                               ])
     
     if input_type == "mofkey":
-        train_data[input_type] = train_data[input_type].apply(clean_mofkey)
-        valid_data[input_type] = valid_data[input_type].apply(clean_mofkey)
         test_data[input_type] = test_data[input_type].apply(clean_mofkey)
     elif input_type == "mofid_v1":
-        train_data[input_type] = train_data[input_type].apply(clean_mofid)
-        valid_data[input_type] = valid_data[input_type].apply(clean_mofid)
         test_data[input_type] = test_data[input_type].apply(clean_mofid)
     elif input_type == "combined_mof_str":
-        train_data = combine_mof_string_representations(train_data, tokenizer, input_type, max_length=max_length)
-        valid_data = combine_mof_string_representations(valid_data, tokenizer, input_type, max_length=max_length)
         test_data = combine_mof_string_representations(test_data, tokenizer, input_type, max_length=max_length) 
-    elif input_type == "mofname_and_mofid":
-        train_data = combined_mofname_and_mofid(train_data, tokenizer, input_type, max_length=max_length)
-        test_data = combined_mofname_and_mofid(test_data, tokenizer, input_type, max_length=max_length)
+    elif input_type == "mofseq":
+        test_data = generate_mofseq(test_data, tokenizer, input_type, max_length=max_length)
         
-    train_data = train_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     test_data = test_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     
-    train_labels_array = np.array(train_data[property_name])
-    train_labels_mean = torch.mean(torch.tensor(train_labels_array))
-    train_labels_std = torch.std(torch.tensor(train_labels_array))
-    train_labels_min = torch.min(torch.tensor(train_labels_array))
-    train_labels_max = torch.max(torch.tensor(train_labels_array))
+    # process train data labels for denormalization
+    train_data_config = readJSON(f"checkpoints/{property_name.lower()}/mofseq_config.json")
+    train_labels_mean = torch.tensor(train_data_config['train_data_info'][f'mean_{property_name}'], dtype=torch.float32)
+    train_labels_std = torch.tensor(train_data_config['train_data_info'][f'std_{property_name}'], dtype=torch.float32)
+    train_labels_min = torch.tensor(train_data_config['train_data_info'][f'min_{property_name}'], dtype=torch.float32)
+    train_labels_max = torch.tensor(train_data_config['train_data_info'][f'max_{property_name}'], dtype=torch.float32) 
 
     if preprocessing_strategy == "none":
-        train_data = train_data
         test_data = test_data
-        # valid_data = valid_data
-
-    elif preprocessing_strategy == "xVal":
-        train_data['list_of_numbers_in_input'] = train_data[input_type].apply(get_numbers_in_a_sentence)
-        train_data[input_type] = train_data[input_type].apply(replace_numbers_with_num)
 
     # define loss functions
     mae_loss_function = nn.L1Loss()
@@ -258,102 +233,97 @@ if __name__ == "__main__":
         'mofname_and_mofid':f'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
     }
     
-    for j, data in enumerate([test_data]):
-        #get the length of the longest composition
-        if input_type in ["mof_name","mofkey"]:
-            max_length = get_max_len(data, tokenizer, input_type)
-            print('\nThe longest composition has', max_length, 'tokens\n')
+    #get the length of the longest composition
+    if input_type in ["mof_name","mofkey"]:
+        max_length = get_max_len(test_data, tokenizer, input_type)
+        print('\nThe longest composition has', max_length, 'tokens\n')
 
-        print('max length:', max_length)
-        
+    print('max length:', max_length)
+    if torch.cuda.is_available():
         if max_length <= 888:
             inference_batch_size = 128 * n_gpus
-        elif max_length == 1500:
+        elif max_length > 888 and max_length <= 1500:
             inference_batch_size = 64 * n_gpus
-        elif max_length == 2000:
+        elif max_length > 1500 and max_length <= 2000:
             inference_batch_size = 32 * n_gpus
 
-        print("labels statistics on training set:")
-        print("Mean:", train_labels_mean)
-        print("Standard deviation:", train_labels_std)
-        print("Max:", train_labels_max)
-        print("Min:", train_labels_min)
-        print("-"*50)
+    print("labels statistics on training set:")
+    print("Mean:", train_labels_mean)
+    print("Standard deviation:", train_labels_std)
+    print("Max:", train_labels_max)
+    print("Min:", train_labels_min)
+    print("-"*50)
+    
+    print("======= Evaluating on test set ========")
+    
+    # averaging the results over 5 runs
+    predictions = []
+    test_results = []
+    seed = 42
+    offset = 10
+    
+    for i in range(1):
+        np.random.seed(seed + (i*offset))
+        random.seed(seed + (i*offset))
+        torch.manual_seed(seed + (i*offset))
+        torch.cuda.manual_seed(seed + (i*offset))
+        # When running on the CuDNN backend, two further options must be set
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        # Set a fixed value for the hash seed
+        os.environ["PYTHONHASHSEED"] = str(seed + (i*offset))
+
+        # define the model
+        if model_name in ["llmprop", "llmprop_finetune"]:
+            base_model = T5EncoderModel.from_pretrained("google/t5-v1_1-small") 
+            base_model_output_size = 512
         
-        print("======= Evaluating on test set ========")
+        # freeze the pre-trained LM's parameters
+        if freeze:
+            for param in base_model.parameters():
+                param.requires_grad = False
+
+        # resizing the model input embeddings matrix to adapt to newly added tokens by the new tokenizer
+        # this is to avoid the "RuntimeError: CUDA error: device-side assert triggered" error
+        base_model.resize_token_embeddings(len(tokenizer))
         
-        # averaging the results over 5 runs
-        predictions = []
-        test_results = []
-        seed = 42
-        offset = 10
+        # best_model_path = input_to_ckpt[input_type]
+        best_model_path = f'checkpoints/{property_name.lower()}/best_llmprop-mofseq_checkpoint_for_MOF_{property_name}_prediction.pt'
+        best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
+
+        device_ids = [d for d in range(torch.cuda.device_count())]
+
+        if torch.cuda.is_available():
+            best_model = nn.DataParallel(best_model, device_ids=device_ids).cuda()
+        else:
+            best_model.to(device)
+
+        if isinstance(best_model, nn.DataParallel):
+            best_model.module.load_state_dict(torch.load(best_model_path, map_location=torch.device(device)), strict=False)
+        else:
+            best_model.load_state_dict(torch.load(best_model_path, map_location=torch.device(device)), strict=False) 
+            best_model.to(device)
         
-        for i in range(1):
-            np.random.seed(seed + (i*offset))
-            random.seed(seed + (i*offset))
-            torch.manual_seed(seed + (i*offset))
-            torch.cuda.manual_seed(seed + (i*offset))
-            # When running on the CuDNN backend, two further options must be set
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
-            # Set a fixed value for the hash seed
-            os.environ["PYTHONHASHSEED"] = str(seed + (i*offset))
-
-            # define the model
-            if model_name in ["llmprop", "llmprop_finetune"]:
-                base_model = T5EncoderModel.from_pretrained("google/t5-v1_1-small") 
-                base_model_output_size = 512
-            elif model_name == "matbert":
-                base_model = BertModel.from_pretrained("/n/fs/rnspace/projects/vertaix/MatBERT/matbert-base-uncased")
-                base_model_output_size = 768
-
-            # freeze the pre-trained LM's parameters
-            if freeze:
-                for param in base_model.parameters():
-                    param.requires_grad = False
-
-            # resizing the model input embeddings matrix to adapt to newly added tokens by the new tokenizer
-            # this is to avoid the "RuntimeError: CUDA error: device-side assert triggered" error
-            base_model.resize_token_embeddings(len(tokenizer))
-            
-            best_model_path = input_to_ckpt[input_type]
-            # best_model_path = '/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt'
-            
-            best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
-
-            device_ids = [d for d in range(torch.cuda.device_count())]
-
-            if torch.cuda.is_available():
-                best_model = nn.DataParallel(best_model, device_ids=device_ids).cuda()
-            else:
-                best_model.to(device)
-
-            if isinstance(best_model, nn.DataParallel):
-                best_model.module.load_state_dict(torch.load(best_model_path, map_location=torch.device(device)), strict=False)
-            else:
-                best_model.load_state_dict(torch.load(best_model_path, map_location=torch.device(device)), strict=False) 
-                best_model.to(device)
-            
-            dataloader = create_dataloaders(
-                tokenizer, 
-                data, 
-                max_length, 
-                inference_batch_size, 
-                property_value=property_name, 
-                pooling=pooling,
-                normalize=False,
-                input_type=input_type,
-                preprocessing_strategy=preprocessing_strategy
-            )
-            
-            predictions_list, test_performance = evaluate(best_model, mae_loss_function, dataloader, train_labels_mean, train_labels_std, property, device, task_name, normalizer=normalizer_type)
-            predictions.append(predictions_list)
-            test_results.append(test_performance)
+        dataloader = create_dataloaders(
+            tokenizer, 
+            test_data, 
+            max_length, 
+            inference_batch_size, 
+            property_value=property_name, 
+            pooling=pooling,
+            normalize=False,
+            input_type=input_type,
+            preprocessing_strategy=preprocessing_strategy
+        )
+        
+        predictions_list, test_performance = evaluate(best_model, mae_loss_function, dataloader, train_labels_mean, train_labels_std, property, device, task_name, normalizer=normalizer_type)
+        predictions.append(predictions_list)
+        test_results.append(test_performance)
 
         # save the averaged predictions
         data['predicted_FE_atom'] = predictions_list
-        data.to_csv(f"vertaix/MOF-FreeEnergy/statistics/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_test_stats_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
+        data.to_csv(f"results/{property_name.lower()}/llmprop_finetune-mofseq_iteration_test_stats_for_{property_name}_regression_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
         
-        test_predictions = {f"mof_name":list(train_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
+        test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
         saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/llm4mat_rebuttal_{model_name}_test_stats_for_{property}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_200_epochs.csv")
         
