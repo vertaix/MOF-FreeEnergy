@@ -4,3 +4,7 @@ checkpoints/fe_atom/best_llmprop-mofseq_checkpoint_for_MOF_FE_atom_prediction.pt
 checkpoints/se_atom/best_llmprop-mofseq_checkpoint_for_MOF_SE_atom_prediction.pt filter=lfs diff=lfs merge=lfs -text
 /n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/se_atom/mofseq filter=lfs diff=lfs merge=lfs -text
 /n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/data/se_atom/raw filter=lfs diff=lfs merge=lfs -text
+data/se_atom/mofseq/train.csv filter=lfs diff=lfs merge=lfs -text
+data/se_atom/mofseq/test.csv filter=lfs diff=lfs merge=lfs -text
+data/se_atom/mofseq/validation.csv filter=lfs diff=lfs merge=lfs -text
+data/se_atom/raw/train.csv filter=lfs diff=lfs merge=lfs -text
