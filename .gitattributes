@@ -1,0 +1,2 @@
+/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/fe_atom/** filter=lfs diff=lfs merge=lfs -text
+/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/se_atom/** filter=lfs diff=lfs merge=lfs -text
