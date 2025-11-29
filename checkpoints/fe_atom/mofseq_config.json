@@ -1,0 +1,18 @@
+{
+    "model_name":"llmprop",
+    "input_type":"mofseq",
+    "task":"regression",
+    "normalizer":"z_norm",
+    "loss":"mae",
+    "max_len":2000,
+    "epochs":200,
+    "dropout":0.2,
+    "learning_rate":0.001,
+    "train_data_info":{
+        "train_size":43554,
+        "max_FE_atom":140.60122733056,
+        "min_FE_atom":9.53472434923451,
+        "mean_FE_atom":30.105392542760104,
+        "std_FE_atom":21.256901905780822
+    }
+}
