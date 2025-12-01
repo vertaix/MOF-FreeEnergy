@@ -1,6 +1,7 @@
 #import necessary libraries
 import time
 import re
+import os
 import tarfile
 import numpy as np
 import pandas as pd
