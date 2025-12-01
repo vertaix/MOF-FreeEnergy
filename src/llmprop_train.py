@@ -170,7 +170,7 @@ def train(
             best_epoch = epoch+1
 
             # save the best model checkpoint
-            save_to_path = checkpoints_directory + f"best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"
+            save_to_path = checkpoints_directory + f"best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"
             
             if isinstance(model, nn.DataParallel):
                 torch.save(model.module.state_dict(), save_to_path)
@@ -194,8 +194,8 @@ def train(
                 }
             )
 
-            saveCSV(pd.DataFrame(data=training_stats), f"{statistics_directory}/{model_name}-{input_type}_training_stats_for_{property_name}_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
-            saveCSV(pd.DataFrame(validation_predictions), f"{statistics_directory}/{model_name}-{input_type}_validation_stats_for_{property_name}_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
+            saveCSV(pd.DataFrame(data=training_stats), f"{results_directory}/{model_name}-{input_type}_training_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
+            saveCSV(pd.DataFrame(validation_predictions), f"{results_directory}/{model_name}-{input_type}_validation_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
             
         else:
             best_loss = best_loss
@@ -317,8 +317,6 @@ if __name__ == "__main__":
     model_name = config.get('model_name')
     training_size = config.get('training_size')
     finetuned_property_name = "SE_atom"
-    iteration_no = config.get('iteration_no')
-    additional_samples_type = config.get('additional_samples_type')
     n_gpus = torch.cuda.device_count()
 
     # checkpoints directory
@@ -327,9 +325,9 @@ if __name__ == "__main__":
         os.makedirs(checkpoints_directory)
 
     # training statistics directory
-    statistics_directory = f"results/{property_name.lower()}/"
-    if not os.path.exists(statistics_directory):
-        os.makedirs(statistics_directory)
+    results_directory = f"results/{property_name.lower()}/"
+    if not os.path.exists(results_directory):
+        os.makedirs(results_directory)
 
     train_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/train.csv")
     valid_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/validation.csv")
@@ -405,6 +403,19 @@ if __name__ == "__main__":
     train_labels_std = torch.std(torch.tensor(train_labels_array))
     train_labels_min = torch.min(torch.tensor(train_labels_array))
     train_labels_max = torch.max(torch.tensor(train_labels_array))
+    
+    config.update({
+        "train_data_info":{
+            "train_size":len(train_data),
+            f"max_{property_name}":train_labels_max.item(),
+            f"min_{property_name}":train_labels_min.item(),
+            f"mean_{property_name}":train_labels_mean.item(),
+            f"std_{property_name}":train_labels_std.item()
+        }
+    })
+    
+    # save the config file
+    writeToJSON(config, f"{checkpoints_directory}/training_config_{model_name}_{input_type}_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.json")
 
     if preprocessing_strategy == "none":
         train_data = train_data
@@ -470,7 +481,7 @@ if __name__ == "__main__":
     else:
         model.to(device)
         
-    if model_name in ["llmprop_finetune", "matbert_finetune"]:
+    if model_name in ["llmprop_finetune"]:
         pretrained_model_path = f"checkpoints/se_atom/best_llmprop-mofseq_checkpoint_for_MOF_SE_atom_prediction.pt"
    
         if isinstance(model, nn.DataParallel):
@@ -585,7 +596,7 @@ if __name__ == "__main__":
         epochs, train_dataloader, valid_dataloader, device, normalizer=normalizer_type)
     
     print("======= Evaluating on test set ========")
-    best_model_path = f"{checkpoints_directory}/best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"
+    best_model_path = f"{checkpoints_directory}/best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"        
     best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
 
     if torch.cuda.is_available():
@@ -621,4 +632,4 @@ if __name__ == "__main__":
 
     # save the averaged predictions
     test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property_name}":list(test_data[property_name]), f"predicted_{property_name}":averaged_predictions}
-    saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/{model_name}-{input_type}_test_stats_for_{property_name}_{task_name}_{preprocessing_strategy}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
+    saveCSV(pd.DataFrame(test_predictions), f"{results_directory}/{model_name}-{input_type}_test_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
