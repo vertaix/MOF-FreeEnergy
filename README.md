@@ -1,4 +1,4 @@
-# [Highly Accurate and Fast Prediction of MOF Free Energy Via Machine Learning](https://chemrxiv.org/engage/chemrxiv/article-details/686fedbc43bc52e4ec4edfc6)
+# [Highly Accurate and Fast Prediction of MOF Free Energy Via Machine Learning](https://pubs.acs.org/doi/full/10.1021/jacs.5c13960)
 This repository contains the implementation of our proposed machine learning approach for MOF Free Energy Prediction.
 
 <p align="center" width="100%">
