@@ -8,7 +8,7 @@ This repository contains the implementation of our proposed machine learning app
     <em> Schematic representation of MOFseq </em>
 </p>
 
-For more details, please read our paper, [Highly Accurate and Fast Prediction of MOF Free Energy Via Machine Learning](https://chemrxiv.org/engage/chemrxiv/article-details/686fedbc43bc52e4ec4edfc6)
+For more details, please read our paper, [Highly Accurate and Fast Prediction of MOF Free Energy Via Machine Learning](https://pubs.acs.org/doi/full/10.1021/jacs.5c13960)
 
 ## Installation
 You can install MOF-FreeEnergy by following these steps:
@@ -77,11 +77,8 @@ print('inference time (s): ', predicting_time)
 
 ## Citation
 ```bibtex
-@Article{NiyongaboRubungo2025,
-author={Niyongabo Rubungo, Andre
-and Fajardo-Rojas, Fernando
-and G{\'o}mez-Gualdr{\'o}n, Diego A.
-and Dieng, Adji Bousso},
+@article{NiyongaboRubungo2025,
+author={Niyongabo Rubungo, Andre and Fajardo-Rojas, Fernando and G{\'o}mez-Gualdr{\'o}n, Diego A. and Dieng, Adji Bousso},
 title={Highly Accurate and Fast Prediction of MOF Free Energy via Machine Learning},
 journal={Journal of the American Chemical Society},
 year={2025},
