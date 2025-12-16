@@ -77,9 +77,19 @@ print('inference time (s): ', predicting_time)
 
 ## Citation
 ```bibtex
-@article{rubungo2025highly,
-  title={Highly Accurate and Fast Prediction of MOF Free Energy Via Machine Learning},
-  author={Rubungo, Andre Niyongabo and Fajardo-Rojas, Fernando and G{\'o}mez-Gualdr{\'o}n, Diego and Dieng, Adji Bousso},
-  year={2025}
+@Article{NiyongaboRubungo2025,
+author={Niyongabo Rubungo, Andre
+and Fajardo-Rojas, Fernando
+and G{\'o}mez-Gualdr{\'o}n, Diego A.
+and Dieng, Adji Bousso},
+title={Highly Accurate and Fast Prediction of MOF Free Energy via Machine Learning},
+journal={Journal of the American Chemical Society},
+year={2025},
+month={Dec},
+day={16},
+publisher={American Chemical Society},
+issn={0002-7863},
+doi={10.1021/jacs.5c13960},
+url={https://doi.org/10.1021/jacs.5c13960}
 }
 ```
