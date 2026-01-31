@@ -90,3 +90,7 @@ doi={10.1021/jacs.5c13960},
 url={https://doi.org/10.1021/jacs.5c13960}
 }
 ```
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vertaix/MOF-FreeEnergy&type=date&legend=top-left)](https://www.star-history.com/#vertaix/MOF-FreeEnergy&type=date&legend=top-left)
