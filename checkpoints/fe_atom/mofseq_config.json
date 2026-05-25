@@ -1,6 +1,6 @@
 {
-    "model_name":"llmprop",
-    "input_type":"mofseq",
+    "model_name":"llmprop_finetune",
+    "input_type":"mofseq-1",
     "task":"regression",
     "normalizer":"z_norm",
     "loss":"mae",

@@ -112,7 +112,7 @@ def evaluate(
         test_performance = mae_loss_function(predictions_tensor.squeeze(), targets_tensor.squeeze())
         r2 = metrics.r2_score(targets_list, predictions_list)
 
-        print(f"\n The test performance on predicting {property}:")
+        print(f"\n The test performance on predicting {property_name}:")
         print(f"MAE error = {test_performance}")
         print(f"R2 score = {r2}")
 
@@ -143,23 +143,17 @@ if __name__ == "__main__":
     
     inference_batch_size = config.get('inference_bs')
     max_length = config.get('max_len')
-    drop_rate = config.get('dr')
     preprocessing_strategy = config.get('preprocessing_strategy')
-    tokenizer_name = config.get('tokenizer')
     pooling = config.get('pooling')
-    normalizer_type = config.get('normalizer')
     property_name = config.get('property_name')
-    data_path = config.get('data_path')
     input_type = config.get('input_type')
-    dataset_name = config.get('dataset_name')
-    model_name = config.get('model_name')
     task_name = "regression"
-    iteration_no = 1
-    additional_samples_type = 'top_10k'
-    
-    if model_name == "matbert":
-        pooling = None
 
+    train_config = readJSON(f"checkpoints/{property_name.lower()}/mofseq_config.json")
+    drop_rate = train_config.get('dropout')
+    normalizer_type = train_config.get('normalizer')
+    model_name = train_config.get('model_name')
+    
     # prepare the data 
     def concatenate_and_shuffle(df_1, df_2):
         concatenated_df = pd.concat([df_1, df_2], ignore_index=True)
@@ -169,7 +163,7 @@ if __name__ == "__main__":
     test_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/test.csv")
     
     # drop duplicates in test data
-    if input_type in ["mof_name","mofkey","mofid_v1"]:
+    if input_type in ["mof_name","mofid_v1"]:
         test_data = test_data.dropna(subset=[input_type]).reset_index(drop=True)
 
     # define the tokenizer
@@ -182,35 +176,23 @@ if __name__ == "__main__":
     if preprocessing_strategy == "xVal":
         tokenizer.add_tokens(["[NUM]"])
         
-    if input_type == "mof_name_and_cif_string":
-        tokenizer.add_tokens(["[SEP]"])
-    elif input_type == "combined_mof_str":
-        tokenizer.add_tokens(["<mofname>","</mofname>",
-                              "<mofid>","</mofid>",
-                              "<mofkey>","</mofkey>"
-                              ])
-    elif input_type == "mofseq":
+    if input_type == "mofseq-1":
         tokenizer.add_tokens(["<mofname>","</mofname>",
                               "<mofid>","</mofid>",
                               ])
     
-    if input_type == "mofkey":
-        test_data[input_type] = test_data[input_type].apply(clean_mofkey)
-    elif input_type == "mofid_v1":
+    if input_type == "mofid_v1":
         test_data[input_type] = test_data[input_type].apply(clean_mofid)
-    elif input_type == "combined_mof_str":
-        test_data = combine_mof_string_representations(test_data, tokenizer, input_type, max_length=max_length) 
-    elif input_type == "mofseq":
+    elif input_type == "mofseq-1":
         test_data = generate_mofseq(test_data, tokenizer, input_type, max_length=max_length)
         
     test_data = test_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     
     # process train data labels for denormalization
-    train_data_config = readJSON(f"checkpoints/{property_name.lower()}/mofseq_config.json")
-    train_labels_mean = torch.tensor(train_data_config['train_data_info'][f'mean_{property_name}'], dtype=torch.float32)
-    train_labels_std = torch.tensor(train_data_config['train_data_info'][f'std_{property_name}'], dtype=torch.float32)
-    train_labels_min = torch.tensor(train_data_config['train_data_info'][f'min_{property_name}'], dtype=torch.float32)
-    train_labels_max = torch.tensor(train_data_config['train_data_info'][f'max_{property_name}'], dtype=torch.float32) 
+    train_labels_mean = torch.tensor(train_config['train_data_info'][f'mean_{property_name}'], dtype=torch.float32)
+    train_labels_std = torch.tensor(train_config['train_data_info'][f'std_{property_name}'], dtype=torch.float32)
+    train_labels_min = torch.tensor(train_config['train_data_info'][f'min_{property_name}'], dtype=torch.float32)
+    train_labels_max = torch.tensor(train_config['train_data_info'][f'max_{property_name}'], dtype=torch.float32) 
 
     if preprocessing_strategy == "none":
         test_data = test_data
@@ -221,20 +203,15 @@ if __name__ == "__main__":
 
     freeze = False # a boolean variable to determine if we freeze the pre-trained T5 weights 
     
-    data_to_name = {
-        '0':'train',
-        '1':'test',
-        '2':'valid'
-    }
-    input_to_ckpt = {
-        'mof_name': '/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mof_name_none_153_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt',
-        'mofkey':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofkey_none_102_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt', 
-        'mofid_v1':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofid_v1_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
-        'mofname_and_mofid':f'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
-    }
+    # input_to_ckpt = {
+    #     'mof_name': '/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mof_name_none_153_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt',
+    #     'mofkey':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofkey_none_102_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt', 
+    #     'mofid_v1':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofid_v1_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
+    #     'mofname_and_mofid':f'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
+    # }
     
     #get the length of the longest composition
-    if input_type in ["mof_name","mofkey"]:
+    if input_type in ["mof_name"]:
         max_length = get_max_len(test_data, tokenizer, input_type)
         print('\nThe longest composition has', max_length, 'tokens\n')
 
@@ -288,7 +265,7 @@ if __name__ == "__main__":
         base_model.resize_token_embeddings(len(tokenizer))
         
         # best_model_path = input_to_ckpt[input_type]
-        best_model_path = f'checkpoints/{property_name.lower()}/best_llmprop-mofseq_checkpoint_for_MOF_{property_name}_prediction.pt'
+        best_model_path = f'checkpoints/{property_name.lower()}/best_llmprop-{input_type}_checkpoint_for_MOF_{property_name}_prediction.pt'
         best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
 
         device_ids = [d for d in range(torch.cuda.device_count())]
@@ -320,10 +297,10 @@ if __name__ == "__main__":
         predictions.append(predictions_list)
         test_results.append(test_performance)
 
-        # save the averaged predictions
-        data['predicted_FE_atom'] = predictions_list
-        data.to_csv(f"results/{property_name.lower()}/llmprop_finetune-mofseq_iteration_test_stats_for_{property_name}_regression_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
+        # # save the averaged predictions
+        # data['predicted_FE_atom'] = predictions_list
+        # data.to_csv(f"results/{property_name.lower()}/llmprop_finetune-mofseq_iteration_test_stats_for_{property_name}_regression_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
         
-        test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
-        saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/llm4mat_rebuttal_{model_name}_test_stats_for_{property}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_200_epochs.csv")
+        # test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
+        # saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/llm4mat_rebuttal_{model_name}_test_stats_for_{property}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_200_epochs.csv")
         

@@ -87,7 +87,7 @@ def args_parser():
     parser.add_argument('--input_type',
                         help="description, structure, or composition",
                         type=str,
-                        default="mofseq")
+                        default="mofseq-1")
     parser.add_argument('--dataset_name',
                         help="mp, ...",
                         type=str,

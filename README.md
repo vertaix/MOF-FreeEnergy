@@ -51,7 +51,11 @@ python src/llmprop_train.py \
 ### Evaluating
 For evaluation run:
 ```python
-python src/llmprop_evaluate.py --inference_bs 512
+python src/llmprop_evaluate.py \
+    --input_type mofseq-1 \
+    --property_name FE_atom \
+    --inference_bs 512 \
+    --max_len 2000
 ```
 
 ### Inference
