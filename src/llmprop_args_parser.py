@@ -23,23 +23,23 @@ def args_parser():
     parser.add_argument('--max_len',
                         help='Max input sequence length',
                         type=int,
-                        default=888)
+                        default=2000)
     parser.add_argument('--dr',
                         help='Drop rate',
                         type=float,
-                        default=0.5)
+                        default=0.2)
     parser.add_argument('--warmup_steps',
                         help='Warmpup steps',
                         type=int,
                         default=30000)
     parser.add_argument('--preprocessing_strategy',
-                        help='Data preprocessing technique: "none", "bond_lengths_replaced_with_num", "bond_angles_replaced_with_ang", "no_stopwords", or "no_stopwords_and_lengths_and_angles_replaced"',
+                        help='Data preprocessing technique: "none", "xVal"',
                         type=str,
-                        default="no_stopwords_and_lengths_and_angles_replaced")
+                        default="none")
     parser.add_argument('--tokenizer',
-                        help='Tokenizer name: "t5_tokenizer" or "modified"',
+                        help='Tokenizer name: "t5_tokenizer" ',
                         type=str,
-                        default="modified")
+                        default="t5_tokenizer")
     parser.add_argument('--pooling', 
                         help='Pooling method. "cls" or "mean"',
                         type=str,
@@ -61,39 +61,23 @@ def args_parser():
                         type=str,
                         default="adamw")
     parser.add_argument('--task_name', 
-                        help='the name of the task: "regression" if propert_name is band_gap or volume or "classification" if property_name is is_gap_direct',
+                        help='"regression"',
                         type=str,
                         default="regression")
     parser.add_argument('--data_path',
                         help="the path to the data",
                         type=str,
-                        default="/n/fs/rnspace/projects/vertaix/nlp4matbench/data")                    
-    parser.add_argument('--train_data_path',
-                        help="the path to the training data",
-                        type=str,
-                        default="data/samples/textedge_prop_mp22_train.csv")
-    parser.add_argument('--valid_data_path',
-                        help="the path to the valid data",
-                        type=str,
-                        default="data/samples/textedge_prop_mp22_valid.csv")
-    parser.add_argument('--test_data_path',
-                        help="the path to the test data",
-                        type=str,
-                        default="data/samples/textedge_prop_mp22_test.csv")
+                        default="data/")                    
     parser.add_argument('--checkpoint',
                         help="the path to the the best checkpoint for evaluation",
                         type=str,
                         default="")
     parser.add_argument('--input_type',
-                        help="description, structure, or composition",
+                        help="mof_name, mofid_v1, mofseq-1, or mofseq-2",
                         type=str,
                         default="mofseq-1")
-    parser.add_argument('--dataset_name',
-                        help="mp, ...",
-                        type=str,
-                        default="mp")
     parser.add_argument('--model_name',
-                        help="llmprop, ...",
+                        help="llmprop, llmprop_finetune",
                         type=str,
                         default="llmprop")
     parser.add_argument('--regressor',
@@ -104,18 +88,22 @@ def args_parser():
                         help="mae, ...",
                         type=str,
                         default="mae")
-    parser.add_argument('--training_size',
+    parser.add_argument('--training_ratio',
                         help="0.2, 0.4, ..., 1.0",
                         type=float,
                         default=1.0)
-    parser.add_argument('--iteration_no',
-                        help="the n_th self_training iteration",
-                        type=int,
-                        default=0)
-    parser.add_argument('--additional_samples_type',
-                        help="the type of additional samples to be used for self-training. 'bot_10k' or 'top_10k'",
+    parser.add_argument('pretraining_ckpt_path',
+                        help="the path to the pretraining checkpoint for fine-tuning",
                         type=str,
-                        default="bot_10k")
+                        default="")
+    parser.add_argument('--checkpoint_path',
+                        help="the path to the checkpoint for evaluation",
+                        type=str,
+                        default="")
+    parser.add_argument('--config_path',
+                        help="the path to the config file",
+                        type=str,
+                        default="")
     args = parser.parse_args()
     
     return args

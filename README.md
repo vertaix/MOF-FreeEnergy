@@ -27,6 +27,7 @@ We first pretrain on strain energy by running:
 ```python
 python src/llmprop_train.py \
     --model_name llmprop \
+    --input_type mofseq-1 \ # other options: mofseq-2, mofname, mofid_v1
     --property_name SE_atom \
     --dr 0.2 \
     --lr 1e-3 \
@@ -41,21 +42,25 @@ Then we finetune on free energy by running:
 python src/llmprop_train.py \
     --model_name llmprop_finetune \
     --property_name FE_atom \
+    --input_type mofseq-1 \
     --dr 0.2 \
     --lr 1e-3 \
     --max_len 2000 \
     --epochs 200 \
     --train_bs 64 \
-    --inference_bs 512
+    --inference_bs 512 \
+    --pretraining_ckpt_path "checkpoints/se_atom/mofseq-1/best_checkpoint.pt" \
 ```
 ### Evaluating
 For evaluation run:
 ```python
 python src/llmprop_evaluate.py \
-    --input_type mofseq-1 \
+    --input_type mofseq-1 \ # other options: mofseq-2
     --property_name FE_atom \
     --inference_bs 512 \
-    --max_len 2000
+    --max_len 2000 \
+    --checkpoint_path "checkpoints/fe_atom/mofseq-1/best_checkpoint.pt" \
+    --config_path "checkpoints/fe_atom/mofseq-1/training_config.json" \
 ```
 
 ### Inference
@@ -65,7 +70,7 @@ Follow the below example to predict the free energy of one or few samples. For m
 from src.llmprop_inference import predict
 
 mofname = "SR_nkc_v1-4c_Cu_1_Ch_v2-4c_1anC_Ch_v3-3c_B_Ch_2B_fused_Ch"
-mofid = "[Cu][Cu].[O-]C(=O)c1ccc2c(c1)ccc(c2)c1cc2-c3ccc4c(c3)ccc(c4)C3(c4ccc5c(c4)ccc(-c4cc(-c6cc7ccc(-c(c1)c2)cc7cc6)cc(c4)c1ccc2c(c1)ccc(c2)C(=O)[O-])c5)c1ccc2c(c1)ccc(-c1cc(-c4ccc5cc(-c6cc(-c7cc8ccc3cc8cc7)cc(c6)c3ccc6c(c3)ccc(c6)C(=O)[O-])ccc5c4)cc(c1)c1ccc3c(c1)ccc(c3)C(=O)[O-])c2 MOFid-v1.TIMEOUT.cat0.NO_REF;SR_nkc_v1-4c_Cu_1_Ch_v2-4c_1anC_Ch_v3-3c_B_Ch_2B_fused_Ch"
+mofid = "[Cu][Cu].[O-]C(=O)c1ccc2c(c1)ccc(c2)c1cc2-c3ccc4c(c3)ccc(c4)C3(c4ccc5c(c4)ccc(-c4cc(-c6cc7ccc(-c(c1)c2)cc7cc6)cc(c4)c1ccc2c(c1)ccc(c2)C(=O)[O-])c5)c1ccc2c(c1)ccc(-c1cc(-c4ccc5cc(-c6cc(-c7cc8ccc3cc8cc7)cc(c6)c3ccc6c(c3)ccc(c6)C(=O)[O-])ccc5c4)cc(c1)c1ccc3c(c1)ccc(c3)C(=O)[O-])c2 MOFid-v1.TIMEOUT.cat0.NO_REF"
 prop_name = "FE_atom" # options: "FE_atom" for free energy, "SE_atom" for strain energy
 
 embeddings, predictions, predicting_time = predict(

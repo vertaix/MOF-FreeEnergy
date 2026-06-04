@@ -104,11 +104,6 @@ def get_max_len(df, tokenizer, input_type):
     max_len = max(len(sent) for sent in df[input_type].apply(tokenizer.tokenize))
     return max_len
 
-def clean_mofkey(mofkey):
-    mofkey = mofkey.replace('.MOFkey-v1','').replace('.TIMEOUT','')
-    mofkey = mofkey.replace('.NO_REF','').replace('.ERROR','').replace('.UNKNOWN','')
-    return mofkey
-
 def clean_mofid(mofid):
     mofid = mofid.split(';')[0]
     mofid = mofid.split(' ')[1] + ' ' + mofid.split(' ')[0]
@@ -123,49 +118,84 @@ def truncate_sentence(tokenizer, max_tokens: int, sentence: str) -> str:
     truncated_text = tokenizer.convert_tokens_to_string(truncated_tokens)
     return truncated_text
 
-def generate_mofseq(df, tokenizer, mof_representation='mofseq', max_length=2000):
-    combined_mof_strs = []
-    
-    for _, row in df.iterrows():
-        mof_name = f"<mofname>{row['mof_name']}</mofname>"
-        mofid = f"<mofid>{clean_mofid(row['mofid_v1'])}</mofid>"
-        combined_mof_str = f"{mof_name}{mofid}"
 
-        if len(tokenizer.tokenize(combined_mof_str)) < max_length:
-            combined_mof_strs.append(combined_mof_str)
-        else:
-            part_1 = f"{mof_name}"
-            part_1_len = len(tokenizer.tokenize(part_1))
-            mofid_len = max_length - part_1_len - 5  # Reserve 5 tokens for special tokens
-            truncated_mofid = truncate_sentence(tokenizer, mofid_len, clean_mofid(row['mofid_v1']))
-            combined_mof_strs.append(f"{mof_name}<mofid>{truncated_mofid}</mofid>")
+def generate_mofseq(
+    tokenizer,
+    df=None,
+    mofname=None,
+    mofid=None,
+    space_group=None,
+    input_type="mofseq-1",
+    max_length=2000,
+):
+    def _to_list(x):
+        if x is None:
+            return None
+        return [x] if isinstance(x, str) else list(x)
 
-    df[mof_representation] = combined_mof_strs
-    return df
-
-def generate_mofseq_str(mofname: str, mofid: str, tokenizer, max_length: int = 2000):
-    mof_seqs = []
-    
-    if isinstance(mofname, str):
-        mofname = [mofname]
-    if isinstance(mofid, str):
-        mofid = [mofid]
-    if len(mofname) != len(mofid):
-        raise ValueError("mofname list and mofid list must have the same length.")
-    
-    for m_name, m_id in zip(mofname, mofid):
+    def _build_sequence(m_name, m_id, sg=None):
         mof_name = f"<mofname>{m_name}</mofname>"
-        mof_id = f"<mofid>{clean_mofid(m_id)}</mofid>"
+        mofid_clean = clean_mofid(m_id)
+        mof_id = f"<mofid>{mofid_clean}</mofid>"
 
-        combined_mof_str = f"{mof_name}{mof_id}"
+        use_space_group = input_type == "mofseq-2"
+        space_group_str = (
+            f"<spacegroup>{sg}</spacegroup>"
+            if use_space_group and sg is not None
+            else ""
+        )
 
-        if len(tokenizer.tokenize(combined_mof_str)) < max_length:
-            mof_seqs.append(combined_mof_str)
-        else:
-            part_1 = f"{mof_name}"
-            part_1_len = len(tokenizer.tokenize(part_1))
-            mofid_len = max_length - part_1_len - 7  # Reserve 7 tokens for special tokens
-            
-            truncated_mofid = truncate_sentence(tokenizer, mofid_len, clean_mofid(m_id))
-            mof_seqs.append(f"{mof_name}<mofid>{truncated_mofid}</mofid>")
-    return mof_seqs
+        combined = f"{mof_name}{space_group_str}{mof_id}"
+
+        if len(tokenizer.tokenize(combined)) < max_length:
+            return combined
+
+        prefix = f"{mof_name}{space_group_str}"
+        prefix_len = len(tokenizer.tokenize(prefix))
+
+        reserved_tokens = 7 if use_space_group else 5
+        mofid_len = max_length - prefix_len - reserved_tokens
+
+        truncated_mofid = truncate_sentence(tokenizer, mofid_len, mofid_clean)
+        return f"{prefix}<mofid>{truncated_mofid}</mofid>"
+
+    # DataFrame mode
+    if df is not None:
+        combined_mof_strs = []
+
+        for _, row in df.iterrows():
+            sg = row["space_group"] if input_type == "mofseq-2" else None
+            combined_mof_strs.append(
+                _build_sequence(
+                    row["mof_name"],
+                    row["mofid_v1"],
+                    sg,
+                )
+            )
+
+        df[input_type] = combined_mof_strs
+        return df
+
+    # String/list mode
+    mofname = _to_list(mofname)
+    mofid = _to_list(mofid)
+    space_group = _to_list(space_group)
+
+    if mofname is None or mofid is None:
+        raise ValueError("Provide either df or both mofname and mofid.")
+
+    if len(mofname) != len(mofid):
+        raise ValueError("mofname and mofid must have the same length.")
+
+    if input_type == "mofseq-2":
+        if space_group is None:
+            raise ValueError("space_group must be provided when input_type='mofseq-2'.")
+        if len(space_group) != len(mofname):
+            raise ValueError("space_group must have the same length as mofname and mofid.")
+    else:
+        space_group = [None] * len(mofname)
+
+    return [
+        _build_sequence(m_name, m_id, sg)
+        for m_name, m_id, sg in zip(mofname, mofid, space_group)
+    ]

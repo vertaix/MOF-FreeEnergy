@@ -59,8 +59,7 @@ def train(
     train_dataloader, 
     valid_dataloader, 
     device,  
-    normalizer="z_norm",
-    # encoding_type=None
+    normalizer="z_norm"
 ):
     
     training_starting_time = time.time()
@@ -170,7 +169,7 @@ def train(
             best_epoch = epoch+1
 
             # save the best model checkpoint
-            save_to_path = checkpoints_directory + f"best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"
+            save_to_path = checkpoints_directory + f"best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.pt"
             
             if isinstance(model, nn.DataParallel):
                 torch.save(model.module.state_dict(), save_to_path)
@@ -194,9 +193,9 @@ def train(
                 }
             )
 
-            saveCSV(pd.DataFrame(data=training_stats), f"{results_directory}/{model_name}-{input_type}_training_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
-            saveCSV(pd.DataFrame(validation_predictions), f"{results_directory}/{model_name}-{input_type}_validation_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
-            
+            saveCSV(pd.DataFrame(data=training_stats), f"{results_directory}/{model_name}-{input_type}_training_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.csv")
+            saveCSV(pd.DataFrame(validation_predictions), f"{results_directory}/{model_name}-{input_type}_validation_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.csv")
+
         else:
             best_loss = best_loss
         
@@ -311,28 +310,27 @@ if __name__ == "__main__":
     property_name = config.get('property_name')
     optimizer_type = config.get('optimizer')
     task_name = config.get('task_name')
-    data_path = config.get('data_path')
     input_type = config.get('input_type')
     dataset_name = config.get('dataset_name')
     model_name = config.get('model_name')
-    training_size = config.get('training_size')
-    finetuned_property_name = "SE_atom"
+    training_ratio = config.get('training_ratio')
+    training_ckpt_path = config.get('training_ckpt_path')
     n_gpus = torch.cuda.device_count()
 
     # checkpoints directory
-    checkpoints_directory = f"checkpoints/{property_name.lower()}/"
+    checkpoints_directory = f"checkpoints/{property_name.lower()}/{input_type}/"
     if not os.path.exists(checkpoints_directory):
         os.makedirs(checkpoints_directory)
 
     # training statistics directory
-    results_directory = f"results/{property_name.lower()}/"
+    results_directory = f"results/{property_name.lower()}/{input_type}/"
     if not os.path.exists(results_directory):
         os.makedirs(results_directory)
 
-    train_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/train.csv")
-    valid_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/validation.csv")
-    test_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/test.csv")
-    
+    train_data = pd.read_csv(f"data/{property_name.lower()}/raw/train.csv")
+    valid_data = pd.read_csv(f"data/{property_name.lower()}/raw/validation.csv")
+    test_data = pd.read_csv(f"data/{property_name.lower()}/raw/test.csv")
+
     # define the tokenizer
     tokenizer = AutoTokenizer.from_pretrained("t5-small") 
 
@@ -340,45 +338,35 @@ if __name__ == "__main__":
     if pooling == 'cls':
         tokenizer.add_tokens(["[CLS]"]) 
     
-    if input_type == "mof_name_and_cif_string":
-        tokenizer.add_tokens(["[SEP]"])
-    elif input_type == "combined_mof_str":
-        tokenizer.add_tokens(["<mofname>","</mofname>",
-                              "<mofid>","</mofid>",
-                              "<mofkey>","</mofkey>"
-                              ])
-    elif input_type == "mofseq":
+    if preprocessing_strategy == "xVal":
+        tokenizer.add_tokens(["[NUM]"])
+        
+    if input_type == "mofseq-1":
         tokenizer.add_tokens(["<mofname>","</mofname>",
                               "<mofid>","</mofid>",
                               ])
-
-    #get the length of the longest composition
-    if input_type in ["mof_name","mofkey"]:
-        max_length = get_max_len(pd.concat([train_data, valid_data, test_data]), tokenizer, input_type)
-        print('\nThe longest composition has', max_length, 'tokens\n')
-
-    print('max length:', max_length)
+    elif input_type == "mofseq-2":
+        tokenizer.add_tokens(["<mofname>","</mofname>",
+                              "<spacegroup>","</spacegroup>",
+                              "<mofid>","</mofid>",
+                              ])
     
-    if input_type == "mof_name_and_cif_string":
-        train_data[input_type] = train_data['mof_name'] + '[SEP]' + train_data['cif_string']
-        valid_data[input_type] = valid_data['mof_name'] + '[SEP]' + valid_data['cif_string']
-        test_data[input_type] = test_data['mof_name'] + '[SEP]' + test_data['cif_string']
-    elif input_type == "mofkey":
-        train_data[input_type] = train_data[input_type].apply(clean_mofkey)
-        valid_data[input_type] = valid_data[input_type].apply(clean_mofkey)
-        test_data[input_type] = test_data[input_type].apply(clean_mofkey)
-    elif input_type == "mofid_v1":
+    # prepare mof input representation
+    if input_type == "mofid_v1":
         train_data[input_type] = train_data[input_type].apply(clean_mofid)
         valid_data[input_type] = valid_data[input_type].apply(clean_mofid)
         test_data[input_type] = test_data[input_type].apply(clean_mofid)
-    elif input_type == "combined_mof_str":
-        train_data = combine_mof_string_representations(train_data, tokenizer, input_type, max_length=max_length)
-        valid_data = combine_mof_string_representations(valid_data, tokenizer, input_type, max_length=max_length)
-        test_data = combine_mof_string_representations(test_data, tokenizer, input_type, max_length=max_length)
-    elif input_type == "mofseq":
-        train_data = generate_mofseq(train_data, tokenizer, input_type, max_length=max_length)
-        valid_data = generate_mofseq(valid_data, tokenizer, input_type, max_length=max_length)
-        test_data = generate_mofseq(test_data, tokenizer, input_type, max_length=max_length)
+    elif input_type in ["mofseq-1", "mofseq-2"]:
+        train_data = generate_mofseq(tokenizer, df=train_data, input_type=input_type, max_length=max_length)
+        valid_data = generate_mofseq(tokenizer, df=valid_data, input_type=input_type, max_length=max_length)
+        test_data = generate_mofseq(tokenizer, df=test_data, input_type=input_type, max_length=max_length)
+
+    #get the length of the longest mofname sequence to be the max_length for the model input
+    if input_type in ["mof_name"]:
+        max_length = get_max_len(pd.concat([train_data, valid_data, test_data]), tokenizer, input_type)
+        print('\nThe longest mofname has', max_length, 'tokens\n')
+
+    print('max length:', max_length)
         
     train_data = train_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
     valid_data = valid_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
@@ -395,7 +383,7 @@ if __name__ == "__main__":
     print(f'Final Dataset Sizes - Train: {len(train_data)}, Valid: {len(valid_data)}, Test: {len(test_data)}')
     print('-'*100)
 
-    train_data = train_data.loc[0:int(len(train_data)*training_size)]
+    train_data = train_data.loc[0:int(len(train_data)*training_ratio)]
     task_name = 'regression'
     
     train_labels_array = np.array(train_data[property_name])
@@ -415,7 +403,7 @@ if __name__ == "__main__":
     })
     
     # save the config file
-    writeToJSON(config, f"{checkpoints_directory}/training_config_{model_name}_{input_type}_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.json")
+    writeToJSON(config, f"{checkpoints_directory}/training_config_{model_name}-{input_type}_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.json")
 
     if preprocessing_strategy == "none":
         train_data = train_data
@@ -482,7 +470,10 @@ if __name__ == "__main__":
         model.to(device)
         
     if model_name in ["llmprop_finetune"]:
-        pretrained_model_path = f"checkpoints/se_atom/best_llmprop-mofseq_checkpoint_for_MOF_SE_atom_prediction.pt"
+        if len(training_ckpt_path) > 0:
+            pretrained_model_path = training_ckpt_path
+        else:
+            pretrained_model_path = f"checkpoints/se_atom/{input_type}/best_llmprop-{input_type}_checkpoint_for_MOF_SE_atom_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.pt"
    
         if isinstance(model, nn.DataParallel):
             model.module.load_state_dict(torch.load(pretrained_model_path, map_location=torch.device(device)), strict=False)
@@ -596,7 +587,7 @@ if __name__ == "__main__":
         epochs, train_dataloader, valid_dataloader, device, normalizer=normalizer_type)
     
     print("======= Evaluating on test set ========")
-    best_model_path = f"{checkpoints_directory}/best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.pt"        
+    best_model_path = f"{checkpoints_directory}/best_{model_name}-{input_type}_checkpoint_for_MOF_{property_name}_prediction_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.pt"        
     best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
 
     if torch.cuda.is_available():
@@ -632,4 +623,4 @@ if __name__ == "__main__":
 
     # save the averaged predictions
     test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property_name}":list(test_data[property_name]), f"predicted_{property_name}":averaged_predictions}
-    saveCSV(pd.DataFrame(test_predictions), f"{results_directory}/{model_name}-{input_type}_test_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_size_{int(training_size*100)}%.csv")
+    saveCSV(pd.DataFrame(test_predictions), f"{results_directory}/{model_name}-{input_type}_test_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.csv")

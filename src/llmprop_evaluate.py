@@ -1,6 +1,6 @@
 import os
 import re
-import glob
+from glob import glob
 import time
 import datetime
 import random
@@ -148,11 +148,19 @@ if __name__ == "__main__":
     property_name = config.get('property_name')
     input_type = config.get('input_type')
     task_name = "regression"
+    checkpoint_path = config.get('checkpoint_path')
+    config_path = config.get('config_path')
 
-    train_config = readJSON(f"checkpoints/{property_name.lower()}/mofseq_config.json")
+    if len(config_path) > 0:
+        train_config = readJSON(config_path)
+    else:
+        train_config = readJSON(f"checkpoints/{property_name.lower()}/{input_type}/training_config.json")
     drop_rate = train_config.get('dropout')
     normalizer_type = train_config.get('normalizer')
     model_name = train_config.get('model_name')
+    learning_rate = train_config.get('learning_rate')
+    epochs = train_config.get('epochs')
+    training_ratio = train_config.get('training_ratio')
     
     # prepare the data 
     def concatenate_and_shuffle(df_1, df_2):
@@ -160,7 +168,7 @@ if __name__ == "__main__":
         shuffled_df = concatenated_df.sample(frac=1, random_state=42).reset_index(drop=True)
         return shuffled_df
 
-    test_data = pd.read_csv(f"data/{property_name.lower()}/mofseq/test.csv")
+    test_data = pd.read_csv(f"data/{property_name.lower()}/raw/test.csv")
     
     # drop duplicates in test data
     if input_type in ["mof_name","mofid_v1"]:
@@ -180,13 +188,20 @@ if __name__ == "__main__":
         tokenizer.add_tokens(["<mofname>","</mofname>",
                               "<mofid>","</mofid>",
                               ])
+    elif input_type == "mofseq-2":
+        tokenizer.add_tokens(["<mofname>","</mofname>",
+                              "<spacegroup>","</spacegroup>",
+                              "<mofid>","</mofid>",
+                              ])
     
+    # prepare mof input representation
     if input_type == "mofid_v1":
         test_data[input_type] = test_data[input_type].apply(clean_mofid)
-    elif input_type == "mofseq-1":
-        test_data = generate_mofseq(test_data, tokenizer, input_type, max_length=max_length)
+    elif input_type in ["mofseq-1", "mofseq-2"]:
+        test_data = generate_mofseq(tokenizer, df=test_data, input_type=input_type, max_length=max_length)
         
     test_data = test_data.drop_duplicates(subset=[input_type]).reset_index(drop=True)
+    print(test_data[input_type][0])
     
     # process train data labels for denormalization
     train_labels_mean = torch.tensor(train_config['train_data_info'][f'mean_{property_name}'], dtype=torch.float32)
@@ -203,17 +218,10 @@ if __name__ == "__main__":
 
     freeze = False # a boolean variable to determine if we freeze the pre-trained T5 weights 
     
-    # input_to_ckpt = {
-    #     'mof_name': '/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mof_name_none_153_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt',
-    #     'mofkey':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofkey_none_102_tokens_300_epochs_0.001_0.2_100.0%_no_outliers.pt', 
-    #     'mofid_v1':'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_best_checkpoint_for_FE_atom_regression_mofid_v1_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
-    #     'mofname_and_mofid':f'/n/fs/rnspace/projects/vertaix/MOF-FreeEnergy/checkpoints/1m_mof/mofbench_llmprop_finetune_iteration_{iteration_no}_{additional_samples_type}_best_checkpoint_for_FE_atom_regression_mofname_and_mofid_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.pt',
-    # }
-    
-    #get the length of the longest composition
-    if input_type in ["mof_name"]:
+    #get the length of the longest mofname sequence to be the max_length for the model input
+    if input_type in ["mof_name"]:   
         max_length = get_max_len(test_data, tokenizer, input_type)
-        print('\nThe longest composition has', max_length, 'tokens\n')
+        print('\nThe longest mofname has', max_length, 'tokens\n')
 
     print('max length:', max_length)
     if torch.cuda.is_available():
@@ -265,7 +273,10 @@ if __name__ == "__main__":
         base_model.resize_token_embeddings(len(tokenizer))
         
         # best_model_path = input_to_ckpt[input_type]
-        best_model_path = f'checkpoints/{property_name.lower()}/best_llmprop-{input_type}_checkpoint_for_MOF_{property_name}_prediction.pt'
+        if len(checkpoint_path) > 0:
+            best_model_path = checkpoint_path
+        else:
+            best_model_path = f"checkpoints/{property_name.lower()}/{input_type}/best_checkpoint.pt"
         best_model = Predictor(base_model, base_model_output_size, drop_rate=drop_rate, pooling=pooling, model_name=model_name)
 
         device_ids = [d for d in range(torch.cuda.device_count())]
@@ -294,13 +305,8 @@ if __name__ == "__main__":
         )
         
         predictions_list, test_performance = evaluate(best_model, mae_loss_function, dataloader, train_labels_mean, train_labels_std, property, device, task_name, normalizer=normalizer_type)
-        predictions.append(predictions_list)
-        test_results.append(test_performance)
 
-        # # save the averaged predictions
-        # data['predicted_FE_atom'] = predictions_list
-        # data.to_csv(f"results/{property_name.lower()}/llmprop_finetune-mofseq_iteration_test_stats_for_{property_name}_regression_none_2000_tokens_200_epochs_0.001_0.2_100.0%_no_outliers.csv")
-        
-        # test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property}":list(test_data[property]), f"predicted_{property}":averaged_predictions}
-        # saveCSV(pd.DataFrame(test_predictions), f"{statistics_directory}/llm4mat_rebuttal_{model_name}_test_stats_for_{property}_{task_name}_{input_type}_{preprocessing_strategy}_{max_length}_tokens_200_epochs.csv")
+        # save the averaged predictions
+        test_predictions = {f"mof_name":list(test_data['mof_name']), f"actual_{property_name}":list(test_data[property_name]), f"predicted_{property_name}":predictions_list}
+        saveCSV(pd.DataFrame(test_predictions), f"results/{property_name.lower()}/{input_type}/{model_name}-{input_type}_test_stats_for_{property_name}_{max_length}_tokens_{epochs}_epochs_{learning_rate}_{drop_rate}_training_samples_ratio_{int(training_ratio*100)}%.csv")
         
