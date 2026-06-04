@@ -20,7 +20,7 @@ conda activate <environment_name>
 ```
 ## Usage
 ### Preparing the data
-First download the preprocessed data from this [link](https://drive.google.com/drive/folders/18joRpZCNW8guhHTtjZJYA0IAsE3-Wm-7) and save the `data` folder in the root directory. The `mofseq` part in the data files is the MOF representation with `2000 tokens` sequence length that is ready to use. To adjust the sequence length, please refer to this [notebook](data_preparation.ipynb) and change the `paths` and the `max_len` value accordingly. 
+We added the [data](/data) (train, validation, and test splits) we used in our experiments in this repository for easy access and reproducibility. No preprocessing is needed.
 
 ### Pretraining
 We first pretrain on strain energy by running:
